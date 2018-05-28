@@ -1,0 +1,24 @@
+## JAGS model
+
+data {
+    ## precision for priors
+    precision <- 1.0E-3
+}
+
+model {
+    ## loop over the N patients
+    for ( i in 1:N ) {
+        log_like[i] <- log(dnorm(V[i], W, tau_V)) ## used for WAIC
+        ## likelihood of virus loads V, given a "predicted virus load W"
+        V[i] ~ dnorm(W, tau_V)
+        intervalCensorValue[i] ~ dinterval(V[i], VLbound[i])
+    }
+    ## precision of V given the prediction W
+    tau_V ~ dgamma(precision, precision)
+    ## mean VL (the predictor in the NULL model
+    W ~ dnorm(0.0, precision)
+
+    ## compute R^2 of the model. See the paper
+    ## Gelman et al., R-squared for Bayesian regression models, 2017
+    R2 <- 0.0 ## for the null model, the R-squared is always 0
+}

@@ -1,0 +1,90 @@
+## JAGS model
+
+data {
+    ## transformed data (NB: in JAGS, nodes can only be defined once in the model block)
+    for ( i in 1:N ) {
+        oneA1[i] <- 1
+        oneA2[i] <- 1
+        oneB1[i] <- 1
+        oneB2[i] <- 1
+        oneC1[i] <- 1
+        oneC2[i] <- 1
+    }
+
+    ## uninformed Dirichlet distribution...
+    for ( h in 1:HA ) { halvesA[h] <- 0.5 }
+    for ( h in 1:HB ) { halvesB[h] <- 0.5 }
+    for ( h in 1:HC ) { halvesC[h] <- 0.5 }
+
+    ## precision for priors
+    precision <- 1.0E-3
+}
+
+model {
+    ## loop over the N patients
+    for ( i in 1:N ) {
+        log_like[i] <- log(dnorm(V[i], W[i], tau_V)) ## used for WAIC
+        ## likelihood of virus loads V, given a "predicted virus load W"
+        V[i] ~ dnorm(W[i], tau_V)
+        intervalCensorValue[i] ~ dinterval(V[i], VLbound[i])
+        ## the predicted virus load is determined by the weights (beta) of the HLA alleles
+        ## each patient has 3 times 2 alleles
+        kirEffect[i] <- beta[kirEpA[hlaA1[i]]] + beta[kirEpA[hlaA2[i]]] +
+                        beta[kirEpB[hlaB1[i]]] + beta[kirEpB[hlaB2[i]]] +
+                        beta[kirEpC[hlaC1[i]]] + beta[kirEpC[hlaC2[i]]]
+        W[i] <- alpha + (kirEffect[i] - meanKirEffect)
+
+        ## missing HLA data. The vectors cA1[,i], ..., cC2[,i] restrict the possible
+        ## alleles for patient i. If the 4-digit allele is fully known, only one
+        ## element of the vector is 1, otherwise, the vector contains multiple 1s
+        hlaA1[i] ~ dcat(cA1[,i])
+        hlaA2[i] ~ dcat(cA2[,i])
+        hlaB1[i] ~ dcat(cB1[,i])
+        hlaB2[i] ~ dcat(cB2[,i])
+        hlaC1[i] ~ dcat(cC1[,i])
+        hlaC2[i] ~ dcat(cC2[,i])
+
+        ## likelihood of HLA distribution. Each patient contributes to the likelihood
+        ## of the HLA distributions pA, pB and pC.
+        oneA1[i] ~ dbern(pA[hlaA1[i]]) ## oneA1 is mock "data" and always 1
+        oneA2[i] ~ dbern(pA[hlaA2[i]])
+        oneB1[i] ~ dbern(pB[hlaB1[i]])
+        oneB2[i] ~ dbern(pB[hlaB2[i]])
+        oneC1[i] ~ dbern(pC[hlaC1[i]])
+        oneC2[i] ~ dbern(pC[hlaC2[i]])
+    }
+    ## subtract "meanKirEffect" from W[i]'s to de-correlate alpha with beta
+    ## and get better precision for both.
+    meanKirEffect <- mean(kirEffect)
+
+    ## precision of V given the prediction W
+    tau_V ~ dgamma(precision, precision)
+
+    ## HLA frequency distribution
+    pA ~ ddirch(halvesA)
+    pB ~ ddirch(halvesB)
+    pC ~ ddirch(halvesC)
+
+    ## additional data to inform the frequency distributions.
+    ## We use allele counts mA, mB and mC from Sub-Saharan Africa (SSA)
+    ## to better estimate the Allele frequencies. NB: some alleles
+    ## in the Durban cohort, have 0 frequency in the SSA sample. Therefore,
+    ## we cannot use the SSA frequencies directly.
+    mA ~ dmulti(pA, MA)
+    mB ~ dmulti(pB, MB)
+    mC ~ dmulti(pC, MC)
+
+    ## prior of the KIR effect. The intercept of the virus load model
+    alpha ~ dnorm(0.0, precision)
+    ## and the effect of KIR ligands
+	  for ( e in 1:E ) {
+        beta[e] ~ dnorm(0.0, tau_beta)
+    }
+    tau_beta ~ dgamma(precision, precision)
+
+    ## compute R^2 of the model. See the paper
+    ## Gelman et al., R-squared for Bayesian regression models, 2017
+    sdW <- sd(W) ## standard deviation of the data
+    sdE <- sd(V-W) ## standard deviation of the error
+    R2 <- sdW * sdW / (sdW * sdW + sdE + sdE) ## "alternative" R^2
+}

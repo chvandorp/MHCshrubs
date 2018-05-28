@@ -1,0 +1,14 @@
+{
+  "id" : "DurbanHIV1",
+  "outputFolder" : "data/example",
+  "subjectFileName" : "data/example/subjects_resolved.tsv",
+  "alleleFreqFileName" : "data/example/HLA-counts_NCBI_Sub-Saharan-Africa.tsv",
+  "pSeqFileName" : "data/MHC_pseudo.dat",
+  "fastaFileName" : "data/example/Ref.C.ZA.04.04ZASK146.AY772699.fasta",
+  "traitFieldName" : "VL",
+  "alleleFieldNames" : {
+    "A" : ["HLA_A1", "HLA_A2"],
+    "B" : ["HLA_B1", "HLA_B2"],
+    "C" : ["HLA_Cw1", "HLA_Cw2"]
+  }
+}
