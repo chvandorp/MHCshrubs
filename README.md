@@ -5,7 +5,7 @@ This is a Python package for estimating HLA disease associations,
 using the functional similarities between HLA molecules as prior information to aid the discovery of these associations.
 We have described the algorithm and applications in the following preprint
 
-> [C.H. van Dorp and Can Kesmir](https://doi.org/10.1101/408302) Estimating HLA disease associations using similarity trees, bioRxiv preprint (2018)
+> [Christiaan H. van Dorp and Can Kesmir](https://doi.org/10.1101/408302) Estimating HLA disease associations using similarity trees, bioRxiv preprint (2018)
 
 ## Installation
 
