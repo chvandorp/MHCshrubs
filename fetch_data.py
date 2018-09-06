@@ -39,7 +39,9 @@ with open(os.path.join(example_folder, kiepiela_filename), 'r') as f:
     reader = csv.DictReader(f, delimiter=',', quotechar='"')
     table = [row for row in reader]
 
-## TODO: resolve data
+## resolve data
+
+
 
 ## alignments
 
