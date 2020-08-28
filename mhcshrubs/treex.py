@@ -8,29 +8,6 @@ import numpy as np
 import matplotlib as plt
 import operator
 
-def angleToAlign(angle):
-    """
-    Function for aligning text. Transform an angle to text alignment properties
-
-    DEPRECATED: this issue is solved by passing the kwarg rotation_mode="anchor"
-
-    Args:
-        angle (float): the desired angle of the rotated text
-
-    Returns:
-        A dictionary of alignment codes
-    """
-    if angle < 0.5*np.pi:
-        props = {'ha': 'left', 'va': 'bottom'}
-    elif angle < np.pi:
-        props = {'ha': 'right', 'va': 'bottom'}
-        angle += np.pi
-    elif angle < 1.5*np.pi:
-        props = {'ha': 'right', 'va': 'top'}
-        angle += np.pi
-    else:
-        props = {'ha': 'left', 'va': 'top'}
-    return props
 
 def distribute_arclengths(G, n_prev, n, a0, da, arclengths):
     """

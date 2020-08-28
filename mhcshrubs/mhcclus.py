@@ -9,7 +9,8 @@ import ete3
 import os
 import itertools
 from mhcshrubs import auxiliary as aux
-from mhcshrubs import (mhctools, mhcbind, sequences, definitions)
+from mhcshrubs import definitions as defn
+from mhcshrubs import (mhctools, mhcbind, sequences)
 
 
 def mkPseqDict(pSeqFileName): ## MHC_pseudo.dat
@@ -355,7 +356,7 @@ def mkPeptideBindingNewickTree(fastaFileName, hlaAlleles, collapse=False,
 
     """
     mhcList = [hla for X in sorted(hlaAlleles.keys()) for hla in hlaAlleles[X]]
-    netMHCpanPath = definitions.NETMHCPAN_PATH
+    netMHCpanPath = defn.NETMHCPAN_PATH
 
     ## determine the number of cpu cores to use
     if parallel:

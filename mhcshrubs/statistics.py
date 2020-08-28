@@ -3,7 +3,7 @@ from builtins import (map, zip)
 import numpy as np
 import scipy.stats as sts
 import matplotlib.pyplot as plt
-from mhcshrubs import definitions
+from mhcshrubs import definitions as defn
 import mhcshrubs.auxiliary as aux
 
 def CImeanBootstrap(xs, mass=0.95, B=1000):
@@ -146,7 +146,7 @@ def mkTracePlots(filename, chains, parnames, Rhat={}, cols=3):
     for i, pn in enumerate(parnames):
         col = i % cols
         row = i // cols
-        symb = definitions.symbolDict[pn[0]] if pn[0] in definitions.symbolDict.keys() else None
+        symb = defn.symbolDict[pn[0]] if pn[0] in defn.symbolDict.keys() else None
         mkTracePlot(axs[row, col], chains, pn[0], symbol=symb, idx=pn[1])
         if pn[0] in Rhat.keys():
             R = Rhat[pn[0]][pn[1]] if pn[1] is not None else Rhat[pn[0]]

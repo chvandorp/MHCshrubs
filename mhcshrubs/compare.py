@@ -8,8 +8,9 @@ import scipy.stats as sts
 import matplotlib.pyplot as plt
 import csv
 import os
-from mhcshrubs import (mhctools, definitions)
+from mhcshrubs import mhctools
 from mhcshrubs import auxiliary as aux
+from mhcshrubs import definitions as defn
 
 def compareModels(modelname1, modelname2, deltalpd_threshold=0.1):
     """
@@ -46,7 +47,7 @@ def compareModels(modelname1, modelname2, deltalpd_threshold=0.1):
         pos = np.argsort(np.abs(selected_diffs))[::-1]
         ax.grid(axis='y')
         ax.barh(range(len(pos)), [selected_diffs[p] for p in pos], 0.3,
-                color=definitions.locusColorDict[locus])
+                color=defn.locusColorDict[locus])
         ax.set_yticks(range(len(pos)))
         ax.set_yticklabels([selected_alleles[p].short_str() for p in pos])
         ax.axvline(x=0, color='k')
@@ -127,9 +128,9 @@ def compareModelsSEM(modelname1, modelname2, deltalpd_threshold=0.1):
         pos = np.argsort(np.abs(selected_diffs))[::-1]
         ax.grid(axis='y')
         ax.barh(range(len(pos)), [selected_diffs[p] for p in pos], 0.3,
-                color=definitions.locusColorDict[locus],
+                color=defn.locusColorDict[locus],
                 xerr=np.array([selected_errs[p] for p in pos]),
-                #ecolor=definitions.locusColorDict[locus],
+                #ecolor=defn.locusColorDict[locus],
                 capsize=5)
         ax.set_yticks(range(len(pos)))
         ax.set_yticklabels([selected_alleles[p].short_str() for p in pos])

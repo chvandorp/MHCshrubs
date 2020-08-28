@@ -7,6 +7,7 @@ import scipy.stats as sts
 import numpy as np
 from mhcshrubs import papyjags as ppj
 from mhcshrubs import auxiliary as aux
+from mhcshrubs import definitions as defn
 
 
 def normal_model(virus_load, censoring_code, virus_load_bound,
@@ -49,11 +50,11 @@ def normal_model(virus_load, censoring_code, virus_load_bound,
         alpha = state["alpha"]
         W = state["W"][subject_idx]
         ## compute log likelihood
-        if censoring_code == aux.uncensored_code:
+        if censoring_code == defn.uncensored_code:
             log_likes.append(sts.norm.logpdf(virus_load, loc=W, scale=sigma_V))
-        elif censoring_code == aux.left_censored_code: ## unknown virus load BELOW known value
+        elif censoring_code == defn.left_censored_code: ## unknown virus load BELOW known value
             log_likes.append(sts.norm.logcdf(virus_load_bound, loc=W, scale=sigma_V))
-        elif censoring_code == aux.right_censored_code: ## unknown virus load ABOVE known value
+        elif censoring_code == defn.right_censored_code: ## unknown virus load ABOVE known value
             ## scipy norm.logsf is the log-survival function (i.e. log(1-cdf))
             log_likes.append(sts.norm.logsf(virus_load_bound, loc=W, scale=sigma_V))
         elif censoring_code == aux.missing_code:

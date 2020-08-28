@@ -1,8 +1,5 @@
 """@package mhctools
 A class MhcObject to represent the MHC nomenclature.
-
-TODO: use private members (with underscores) and use property
-for setters and getters.
 """
 
 from __future__ import print_function

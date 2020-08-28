@@ -18,19 +18,20 @@ import csv
 import warnings
 from mhcshrubs import papyjags as ppj ## for JagsModel
 from mhcshrubs import auxiliary as aux
-from mhcshrubs import (definitions, statistics, stantools, colortrees, mhcclus, mhctools, fetcher)
+from mhcshrubs import definitions as defn
+from mhcshrubs import (statistics, stantools, colortrees, mhcclus, mhctools, fetcher)
 
 def getJagsCensCode(c):
-    if c == aux.left_censored_code: return 0 ## upper bound
-    elif c == aux.right_censored_code: return 1 ## lower bound
+    if c == defn.left_censored_code: return 0 ## upper bound
+    elif c == defn.right_censored_code: return 1 ## lower bound
     else: return np.nan
 
 
 def getStanCensCode(c):
-    if c == aux.uncensored_code: return 0
-    elif c == aux.left_censored_code: return 1
-    elif c == aux.right_censored_code: return 2
-    elif c == aux.missing_code: return 3
+    if c == defn.uncensored_code: return 0
+    elif c == defn.left_censored_code: return 1
+    elif c == defn.right_censored_code: return 2
+    elif c == defn.missing_code: return 3
     else: raise Exception("unknown censoring code")
 
 ## functions to make JAGS-friendly data structures
@@ -253,9 +254,9 @@ def fitNullModel(dataDict, parDict, chain_len=1000, chain_thin=10, num_chains=4,
     ## set the VL (and censoring) of the left-out patients to NaN (and the proper censoring code)
     patientLogVls = [vl if i not in leaveOutPatientIdxs else np.nan
                      for i, vl in enumerate(patientLogVls)]
-    VlCensCodes = [code if i not in leaveOutPatientIdxs else aux.missing_code
+    VlCensCodes = [code if i not in leaveOutPatientIdxs else defn.missing_code
                    for i, code in enumerate(VlCensCodes)]
-    VlBounds = [bound if i not in leaveOutPatientIdxs else aux.auxiliaryLowerCensBound
+    VlBounds = [bound if i not in leaveOutPatientIdxs else defn.auxiliaryLowerCensBound
                 for i, bound in enumerate(VlBounds)]
 
     ## prepare data for JAGS
@@ -277,7 +278,7 @@ def fitNullModel(dataDict, parDict, chain_len=1000, chain_thin=10, num_chains=4,
         modelName += "." + ".".join(hla.Newick_str() for hla in leaveOutAlleles)
 
     ## choose the right jags model
-    file_name = os.path.join(definitions.ROOT_DIR, "jags/null-model.bug")
+    file_name = os.path.join(defn.ROOT_DIR, "jags/null-model.bug")
 
     ## choose a working folder
     work_folder = os.getcwd()
@@ -288,7 +289,7 @@ def fitNullModel(dataDict, parDict, chain_len=1000, chain_thin=10, num_chains=4,
         outputFolder = os.path.join(work_folder, "data")
     ## TODO: make sure this folder and a figures subfolder exists
 
-    path = os.path.join(work_folder, "jags-cache")
+    path = os.path.join(outputFolder, "jags-cache")
 
     ## make a JAGS model object
     jm = ppj.JagsModel(file_name=file_name, model_name=modelName, path=path)
@@ -347,7 +348,7 @@ def fitTreeWeights(dataDict, parDict, hlaFileName, hlaNewickString,
     Kwargs:
         represDict (dict):
             a dictionary specifying equivalence classes of HLA alleles
-            i.e. patients HLA alleles are mapped to alleles in the tree. In None,
+            i.e. patients HLA alleles are mapped to alleles in the tree. If None,
             it is assumed that all classes are of size 1 (default: None)
         chain_len (int): the length of the MCMC (default: 1000)
         chain_thin (int): the amount of thinning for the MCMC (default: 10)
@@ -369,7 +370,7 @@ def fitTreeWeights(dataDict, parDict, hlaFileName, hlaNewickString,
         hetr_adv (str):
             how (if) to count heterozygote advantage
             - None (default): don't add a parameter for the heterozygote advantage
-            - discreet: look at discreet allele identity
+            - discrete: look at discreet allele identity
             - tree: use the tree to determine the level of heterozygosity
 
     Returns:
@@ -405,13 +406,13 @@ def fitTreeWeights(dataDict, parDict, hlaFileName, hlaNewickString,
     ## set the VL (and censoring) of the left-out patients to NaN (and the proper censoring code)
     patientLogVls = [vl if i not in leaveOutPatientIdxs else np.nan
                      for i, vl in enumerate(patientLogVls)]
-    VlCensCodes = [code if i not in leaveOutPatientIdxs else aux.missing_code
+    VlCensCodes = [code if i not in leaveOutPatientIdxs else defn.missing_code
                    for i, code in enumerate(VlCensCodes)]
-    VlBounds = [bound if i not in leaveOutPatientIdxs else aux.auxiliaryLowerCensBound
+    VlBounds = [bound if i not in leaveOutPatientIdxs else defn.auxiliaryLowerCensBound
                 for i, bound in enumerate(VlBounds)]
 
     ## make an ETE tree
-    colorfun = lambda hlaStr: definitions.locusColorDict[mhctools.MhcObject(hlaStr).locus]
+    colorfun = lambda hlaStr: defn.locusColorDict[mhctools.MhcObject(hlaStr).locus]
     tree, nodeNames = colortrees.mkEteHlaTree(hlaNewickString, colorfun=colorfun)
 
     if verbose:
@@ -480,28 +481,28 @@ def fitTreeWeights(dataDict, parDict, hlaFileName, hlaNewickString,
     work_folder = os.getcwd()
     if multiplicity == "double":
         if prior == "norm":
-            file_name = os.path.join(work_folder, "mhcshrubs/jags/hla-tree-model.bug")
+            file_name = os.path.join(defn.ROOT_DIR, "jags", "hla-tree-model.bug")
         elif prior == "dexp":
-            file_name = os.path.join(work_folder, "mhcshrubs/jags/dexp-hla-tree-model.bug")
+            file_name = os.path.join(defn.ROOT_DIR, "jags", "dexp-hla-tree-model.bug")
         else:
             raise Exception("invalid prior distribution")
     elif multiplicity == "single":
         if hetr_adv is None:
             if prior == "norm":
-                file_name = os.path.join(work_folder, "mhcshrubs/jags/genhom-hla-tree-model.bug")
+                file_name = os.path.join(defn.ROOT_DIR, "jags", "genhom-hla-tree-model.bug")
             elif prior == "dexp":
-                file_name = os.path.join(work_folder, "mhcshrubs/jags/dexp-genhom-hla-tree-model.bug")
+                file_name = os.path.join(defn.ROOT_DIR, "jags", "dexp-genhom-hla-tree-model.bug")
             else:
                 raise Exception("invalid prior distribution")
         elif hetr_adv == "tree":
             if prior == "norm":
-                file_name = os.path.join(work_folder, "mhcshrubs/jags/dosage-hla-tree-model.bug")
+                file_name = os.path.join(defn.ROOT_DIR, "jags", "dosage-hla-tree-model.bug")
             elif prior == "dexp":
-                file_name = os.path.join(work_folder, "mhcshrubs/jags/dexp-dosage-hla-tree-model.bug")
+                file_name = os.path.join(defn.ROOT_DIR, "jags", "dexp-dosage-hla-tree-model.bug")
             else:
                 raise Exception("invalid prior distribution")
-        elif hetr_adv == "discreet":
-            raise Exception("discreet heterozygosity measure not implemented (TODO)")
+        elif hetr_adv == "discrete":
+            raise Exception("discrete heterozygosity measure not implemented (TODO)")
         else:
             raise Exception("invalid heterozygosity measure")
     else:
@@ -515,7 +516,7 @@ def fitTreeWeights(dataDict, parDict, hlaFileName, hlaNewickString,
     ## TODO: make sure this folder and a figures subfolder exists
 
     ## choose a working folder
-    path = os.path.join(work_folder, "jags-cache")
+    path = os.path.join(outputFolder, "jags-cache")
 
     ## make a JAGS model object
     jm = ppj.JagsModel(file_name=file_name, model_name=modelName, path=path, use_cache=use_cache)
@@ -535,7 +536,7 @@ def fitTreeWeights(dataDict, parDict, hlaFileName, hlaNewickString,
         WAIC = statistics.calcWAIC(chain["log_like"], verbose)
         ## Bayesian R^2
         R2 = (np.mean(chain["R2"]), np.percentile(chain["R2"], 2.5), np.percentile(chain["R2"], 97.5))
-        if verbose: print("R^2 = {0} (95% CrI: [{1},{2}])".format(*R2))
+        if verbose: print(f"R^2 = {R2[0]:0.3f} (95% CrI: [{R2[1]:0.3f},{R2[2]:0.3f}])")
         ## add the estimates to the tree
         betaNodes = [np.array(list(map(float, b))) for b in aux.transpose(chain["betaNodes"])]
         ## TODO: float conversion no longer needed here
@@ -547,10 +548,10 @@ def fitTreeWeights(dataDict, parDict, hlaFileName, hlaNewickString,
             etas = chain["eta"]
             print("heterozygous advantage eta. mean:", np.mean(etas), "sd:", np.std(etas))
             heterozygosities = aux.flatten(chain["heterozygosity"])
-            mean_hetr = np.mean(heterozygosities)
-            lower_hetr = np.percentile(heterozygosities, 2.5)
-            upper_hetr = np.percentile(heterozygosities, 97.5)
-            print("heterozygosity mean: {0:0.2f}, 2.5-97.5 percentile: [{1:0.2f}, {2:0.2f}]".format(mean_hetr, lower_hetr, upper_hetr))
+            m_hetr = np.mean(heterozygosities)
+            l_hetr = np.percentile(heterozygosities, 2.5)
+            u_hetr = np.percentile(heterozygosities, 97.5)
+            print(f"heterozygosity mean: {m_hetr:0.2f}, 2.5-97.5 percentile: [{l_hetr:0.2f}, {u_hetr:0.2f}]")
     else:
         if verbose:
             warnings.warn("warning: no sample generated or no cached sample found.")
@@ -561,14 +562,14 @@ def fitTreeWeights(dataDict, parDict, hlaFileName, hlaNewickString,
 
     ## draw tree with colors indicating weights
     ts = colortrees.getTreeStyle()
-    figFileName = os.path.join(outputFolder,
-      "figures/colored-mhc-tree.{}.png".format(modelName))
+    figFileName = os.path.join(outputFolder, "figures",
+        f"colored-mhc-tree.{modelName}.png")
     colortrees.colorEteTree(tree, cfname="beta", wfname="beta", cffun=np.mean,
                             wffun=aux.getMass, cf_scale_dist=True)
     ## draw a NetworkX tree
     G = colortrees.eteToNetworkX(tree)
-    figFileNameNX = os.path.join(outputFolder,
-      "figures/colored-mhc-utree.{}.png".format(modelName))
+    figFileNameNX = os.path.join(outputFolder, "figures",
+        f"colored-mhc-utree.{modelName}.png")
     if render_figures:
         if aux.isXServerAvailable():
             tree.render(figFileName, w=200, units="mm", tree_style=ts, dpi=500)
@@ -577,21 +578,21 @@ def fitTreeWeights(dataDict, parDict, hlaFileName, hlaNewickString,
             warnings.warn("no X-server avaliable. Tree not rendered.")
     ## draw tree with colors indicating cumulative weights
     ts = colortrees.getTreeStyle()
-    figFileName = os.path.join(outputFolder,
-      "figures/colored-mhc-tree.{}.cumulative.png".format(modelName))
+    figFileName = os.path.join(outputFolder, "figures",
+        f"colored-mhc-tree.{modelName}.cumulative.png")
     legend_fig, (cax, wax) = plt.subplots(2, 1, figsize=(3, 2))
     colortrees.colorEteTree(tree, cfname="beta_cumulative", wfname="beta",
                             cffun=np.mean, wffun=(lambda x: abs(np.mean(x))),
                             cf_scale_dist=False, wf_scale_dist=True, cax=cax, wax=wax)
     legend_fig.tight_layout()
-    legend_filename = os.path.join(outputFolder, "figures/legend.{}.png".format(modelName))
+    legend_filename = os.path.join(outputFolder, "figures" , f"legend.{modelName}.png")
     if render_figures:
         legend_fig.savefig(legend_filename, dpi=300, bbox_inches='tight')
     plt.close(legend_fig)
     ## draw a NetworkX tree
     G = colortrees.eteToNetworkX(tree)
-    figFileNameNX = os.path.join(outputFolder,
-      "figures/colored-mhc-utree.{}.cumulative.png".format(modelName))
+    figFileNameNX = os.path.join(outputFolder, "figures",
+        f"colored-mhc-utree.{modelName}.cumulative.png")
     if render_figures:
         if aux.isXServerAvailable():
             tree.render(figFileName, w=200, units="mm", tree_style=ts, dpi=500)
@@ -624,8 +625,8 @@ def fitTreeWeights(dataDict, parDict, hlaFileName, hlaNewickString,
               "figures/weight-plots.{}.png".format(modelName))
             mkAlleleWeightPlots(figFileNameWeights, chain, hlaAlleles)
             ## allele weight plots
-            figFileNameFreqs = os.path.join(outputFolder,
-              "figures/freq-plots.{}.png".format(modelName))
+            figFileNameFreqs = os.path.join(outputFolder, "figures",
+                f"freq-plots.{modelName}.png")
             mkAlleleFreqPlots(figFileNameFreqs, chain, hlaAlleles, m)
         elif verbose:
             warnings.warn("no X-server avaliable. Trace plot not rendered.")
@@ -711,9 +712,9 @@ def fitPMMweights(dataDict, parDict, hlaFileName, hlaCovMat, hlaCovMatHeader,
     ## set the VL (and censoring) of the left-out patients to NaN (and the proper censoring code)
     patientLogVls = [vl if i not in leaveOutPatientIdxs else np.nan
                      for i, vl in enumerate(patientLogVls)]
-    VlCensCodes = [code if i not in leaveOutPatientIdxs else aux.missing_code
+    VlCensCodes = [code if i not in leaveOutPatientIdxs else defn.missing_code
                    for i, code in enumerate(VlCensCodes)]
-    VlBounds = [bound if i not in leaveOutPatientIdxs else aux.auxiliaryLowerCensBound
+    VlBounds = [bound if i not in leaveOutPatientIdxs else defn.auxiliaryLowerCensBound
                 for i, bound in enumerate(VlBounds)]
 
     ## test that the covariance matrix is positive definite
@@ -782,10 +783,10 @@ def fitPMMweights(dataDict, parDict, hlaFileName, hlaCovMat, hlaCovMatHeader,
         outputFolder = os.path.join(work_folder, "data")
 
     ## choose the right jags model
-    file_name = os.path.join(work_folder, "mhcshrubs/jags/hla-covar-model.bug")
+    file_name = os.path.join(defn.ROOT_DIR, "jags", "hla-covar-model.bug")
 
     ## choose a working folder
-    path = os.path.join(work_folder, "jags-cache")
+    path = os.path.join(outputFolder, "jags-cache")
 
     ## make a JAGS model object
     jm = ppj.JagsModel(file_name=file_name, model_name=modelName,
@@ -806,7 +807,7 @@ def fitPMMweights(dataDict, parDict, hlaFileName, hlaCovMat, hlaCovMatHeader,
             Rhat = {}
         ## Bayesian R^2
         R2 = (np.mean(chain["R2"]), np.percentile(chain["R2"], 2.5), np.percentile(chain["R2"], 97.5))
-        if verbose: print("R^2 = {0} (95% CrI: [{1},{2}])".format(*R2))
+        if verbose: print(f"R^2 = {R2[0]:0.3f} (95% CrI: [{R2[1]:0.3f},{R2[2]:0.3f}])")
     else:
         if verbose:
             print("no sample generated or no cached sample found.")
@@ -818,7 +819,7 @@ def fitPMMweights(dataDict, parDict, hlaFileName, hlaCovMat, hlaCovMatHeader,
     if render_figures:
         if aux.isXServerAvailable():
             figFileNameTP = os.path.join(outputFolder,
-              "figures/trace-plots.{}.png".format(modelName))
+              "figures", "trace-plots.{}.png".format(modelName))
             parametersTP = [
                 ("alpha", None), ## TODO: translate parameter names
                 ("tau_V", None),
@@ -833,11 +834,11 @@ def fitPMMweights(dataDict, parDict, hlaFileName, hlaCovMat, hlaCovMatHeader,
             statistics.mkTracePlots(figFileNameTP, jm.sams, parametersTP, Rhat)
             ## allele weight plots
             figFileNameWeights = os.path.join(outputFolder,
-              "figures/weight-plots.{}.png".format(modelName))
+              "figures", f"weight-plots.{modelName}.png")
             mkAlleleWeightPlots(figFileNameWeights, chain, hlaAlleles)
             ## allele weight plots
             figFileNameFreqs = os.path.join(outputFolder,
-              "figures/freq-plots.{}.png".format(modelName))
+              "figures", f"freq-plots.{modelName}.png")
             mkAlleleFreqPlots(figFileNameFreqs, chain, hlaAlleles, m)
         elif verbose:
             warnings.warn("No X-server avaliable. Figures not rendered.")
@@ -939,11 +940,11 @@ def fitTreeWeightsStan(dataDict, parDict, hlaFileName, hlaNewickString,
                                               if hasForbiddenAllele(av, locus)] for locus in loci]))
 
     ## set the VL censoring of the left-out patients to missing
-    VlCensCodes = [code if i not in leaveOutPatientIdxs else aux.missing_code
+    VlCensCodes = [code if i not in leaveOutPatientIdxs else defn.missing_code
                    for i, code in enumerate(VlCensCodes)]
 
     ## make an ETE tree
-    colorfun = lambda hlaStr: definitions.locusColorDict[mhctools.MhcObject(hlaStr).locus]
+    colorfun = lambda hlaStr: defn.locusColorDict[mhctools.MhcObject(hlaStr).locus]
     tree, nodeNames = colortrees.mkEteHlaTree(hlaNewickString, colorfun=colorfun)
 
     ## prepare data for Stan
@@ -960,7 +961,7 @@ def fitTreeWeightsStan(dataDict, parDict, hlaFileName, hlaNewickString,
     AddlAlleleData = [[hlaCountDict[hla] if hla in list(hlaCountDict.keys()) else 0
                       for hla in hlaAlleles[locus]] for locus in loci]
     ## the Stan model uses one vector for patientLogVls and VlBounds
-    lrcenscodes = [aux.left_censored_code, aux.right_censored_code]
+    lrcenscodes = [defn.left_censored_code, defn.right_censored_code]
     TraitValue = [patientLogVls[i] if VlCensCodes[i] not in lrcenscodes else VlBounds[i]
                   for i in range(NumSubjects)]
     ## translate VlCensCodes to Stan censor codes
@@ -1012,23 +1013,26 @@ def fitTreeWeightsStan(dataDict, parDict, hlaFileName, hlaNewickString,
     if len(leaveOutAlleles) > 0:
         modelName += "." + ".".join(hla.Newick_str() for hla in leaveOutAlleles)
     ## choose the right jags model
-    file_name = os.path.join(definitions.ROOT_DIR, "stan/hla-tree-model.stan")
+    file_name = os.path.join(defn.ROOT_DIR, "stan/hla-tree-model.stan")
     ## choose a folder for the compiled stan model
-    path = os.path.join(definitions.ROOT_DIR, "stan/cache")
+    path = os.path.join(defn.ROOT_DIR, "stan/cache") ## FIXME: test if writa access (on setup: pre-compile stan models)
     ## make a Stan model object
-    with open(file_name) as f: model_code = f.read()
+    with open(file_name) as f:
+        model_code = f.read()
     sm = stantools.CachedStanModel(model_code=model_code, path=path)
     ## run the Stan model
     if not dry_run:
         fit = sm.sampling(data=data, pars=monitor, iter=2*chain_len,
                           warmup=chain_len, thin=chain_thin, chains=num_chains)
-        print(fit) ## TESTING
+        if verbose:
+            print(fit)
         if wbic_sampling:
             data["WBIC"] = 1 ## change WBIC option
             monitor = ["sumTraitValueLoglikes"] ## only have to monitor the log likelihood
             fit_wbic = sm.sampling(data=data, pars=monitor, iter=2*chain_len,
                                    warmup=chain_len, thin=chain_thin, chains=num_chains)
-            print(fit_wbic)
+            if verbose:
+                print(fit_wbic)
         else:
             fit_wbic = None
     else:
@@ -1077,15 +1081,15 @@ def fitTreeWeightsStan(dataDict, parDict, hlaFileName, hlaNewickString,
     ## draw tree with colors indicating cumulative weights
     ts = colortrees.getTreeStyle()
     figFileName = os.path.join(outputFolder,
-      "figures/colored-mhc-tree.{}.cumulative.png".format(modelName))
+      "figures", "colored-mhc-tree.{modelName}.cumulative.png")
     colortrees.colorEteTree(tree, cfname="beta_cumulative", wfname="beta",
                             cffun=np.mean, wffun=(lambda x: abs(np.mean(x))),
                             cf_scale_dist=False, wf_scale_dist=True)
     ## TODO legend
     ## draw a NetworkX tree
     G = colortrees.eteToNetworkX(tree)
-    figFileNameNX = os.path.join(outputFolder,
-      "figures/colored-mhc-utree.{}.cumulative.png".format(modelName))
+    figFileNameNX = os.path.join(outputFolder, "figures",
+        f"colored-mhc-utree.{modelName}.cumulative.png")
     if render_trees:
         if aux.isXServerAvailable():
             tree.render(figFileName, w=200, units="mm", tree_style=ts, dpi=500)
@@ -1127,7 +1131,7 @@ def mkAlleleWeightPlots(filename, chain, hlaAlleles):
     fig, axs = plt.subplots(len(loci), 1, figsize=(15, 3*len(loci)))
     for loc, ax in zip(loci, axs):
         mkAlleleViolinPlot(ax, chain["beta{}".format(loc)], hlaAlleles[loc],
-                           definitions.locusColorDict[loc], sortfun=np.mean)
+                           defn.locusColorDict[loc], sortfun=np.mean)
         ax.set_ylabel("weight HLA-{}".format(loc))
         ax.axhline(y=0, color='k')
         ax.set_ylim(-1,1)
@@ -1140,7 +1144,7 @@ def mkAlleleFreqPlots(filename, chain, hlaAlleles, hlaCounts):
     fig, axs = plt.subplots(len(loci), 1, figsize=(15, 3*len(loci)))
     for loc, ax in zip(loci, axs):
         mkAlleleViolinPlot(ax, chain["p{}".format(loc)], hlaAlleles[loc],
-                           definitions.locusColorDict[loc], alpha=0.5)
+                           defn.locusColorDict[loc], alpha=0.5)
         freqs = [c/np.sum(hlaCounts[loc]) for c in hlaCounts[loc]] ## float division
         ax.scatter(range(len(freqs)), freqs, s=10, color='k', marker='D')
         ax.set_ylabel("frequency HLA-{}".format(loc))

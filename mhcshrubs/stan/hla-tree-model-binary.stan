@@ -1,4 +1,5 @@
 /* fit the HLA tree model with Stan, taking missing HLAs into account.
+ * The dependent variable is binary.
  * ------------------------------------------------------------------
  * common abbreviations:
  * ---------------------
@@ -57,7 +58,7 @@ data {
   int<lower=0> Ploidy; // usually equal to 2
   int<lower=0> NumLoci; // e.g. equals 3 for HLA A, B, C
   int<lower=0> NumSubjects; // number of subjects
-  real TraitValue[NumSubjects]; // disease trait
+  int<lower=0,upper=1> TraitValue[NumSubjects]; // binary trait
   int<lower=0,upper=3> TraitCensorType[NumSubjects]; // 0 = uncensored, 1 = left censored, 2 = right censored, 3 = missing
   int<lower=0> NumAlleles[NumLoci]; // number of alleles
   int<lower=1> NumAdmAlleles[NumSubjects, Ploidy, NumLoci]; // each subject must at least have one admissible allele
@@ -88,11 +89,9 @@ transformed data {
   int<lower=1> RightAdmAlleleCombBnds[NumSubjects];
   int<lower=1> AdmAlleleIdxCombs[count_combs(NumAdmAlleles), Ploidy, NumLoci]; // alleleFreqs, alleleWeights
   int<lower=1> AdmAlleleProbIdxCombs[count_combs(NumAdmAlleles), Ploidy, NumLoci]; // admAlleleProbs
-  // centralize and scale the TraitValue
-  real LocTraitValue;
-  real ScaleTraitValue;
-  real NormTraitValue[NumSubjects];
   int NumUncensoredTraitValues;
+  int NumOnes; // number of TraitValues equals to 1
+  real BaselineLogOdds; // logit(f/(1-f)) where f = fraction of 1s
   real<lower=0> WatanabeBeta; // determines sampling temperature: 1/log(N), where N is the number of observations
 
   // define integer constants
@@ -113,9 +112,12 @@ transformed data {
   for ( s in 1:NumSubjects ) {
     for ( p in 1:Ploidy ) {
       for ( ell in 1:NumLoci ) {
-        int i = (s-1)*Ploidy*NumLoci + (p-1)*NumLoci + ell;
-        int al = sum(to_array_1d(NumAdmAlleles)[:i-1]) + 1;
-        int ar = sum(to_array_1d(NumAdmAlleles)[:i]);
+        int i;
+        int al; int ar;
+
+        i = (s-1)*Ploidy*NumLoci + (p-1)*NumLoci + ell;
+        al = sum(to_array_1d(NumAdmAlleles)[:i-1]) + 1;
+        ar = sum(to_array_1d(NumAdmAlleles)[:i]);
 
         LeftAdmAlleleBnds[s, p, ell] = al;
         RightAdmAlleleBnds[s, p, ell] = ar;
@@ -136,11 +138,15 @@ transformed data {
 
   // construct all possible allele combinations
   for ( s in 1:NumSubjects ) {
-    int sl = LeftAdmAlleleCombBnds[s];
-    int sr = RightAdmAlleleCombBnds[s];
+    int sl; int sr;
+
+    sl = LeftAdmAlleleCombBnds[s];
+    sr = RightAdmAlleleCombBnds[s];
     for ( p in 1:Ploidy ) {
       for ( ell in 1:NumLoci ) {
-        int al = LeftAdmAlleleBnds[s, p, ell]; int ar = RightAdmAlleleBnds[s, p, ell];
+        int al; int ar;
+
+        al = LeftAdmAlleleBnds[s, p, ell]; ar = RightAdmAlleleBnds[s, p, ell];
         for ( a in al:ar ) {
           for ( i in 1:(sr-sl+1)/(ar-al+1) ) {
             AdmAlleleIdxCombs[sl + (i-1)*(ar-al+1) + (a-al), p, ell] = AdmAlleleIdxs[a];
@@ -151,34 +157,22 @@ transformed data {
     } // loop over ploidy
   } // loop over subjects
 
-  // compute normalized TraitValue
-  LocTraitValue = 0.0;
-  ScaleTraitValue = 0.0;
   NumUncensoredTraitValues = 0;
+  NumOnes = 0;
 
   for ( s in 1:NumSubjects ) {
     if ( TraitCensorType[s] == 0 ) {
-      LocTraitValue += TraitValue[s];
       NumUncensoredTraitValues += 1;
+      if ( TraitValue[s] == 1 ) {
+        NumOnes += 1;
+      }
     }
   }
-  if ( NumUncensoredTraitValues > 0 ) {
-    LocTraitValue /= NumUncensoredTraitValues;
-  }
-
-  for ( s in 1:NumSubjects ) {
-    if ( TraitCensorType[s] == 0 ) {
-      ScaleTraitValue += square(TraitValue[s] - LocTraitValue);
-    }
-  }
-  if ( NumUncensoredTraitValues > 1 ) {
-    ScaleTraitValue = sqrt(ScaleTraitValue / (NumUncensoredTraitValues-1));
+  if ( NumOnes > 0 && NumOnes < NumUncensoredTraitValues ) {
+    BaseLineLogOdds = logit(NumOnes * inv(NumUncensoredTraitValues));
   } else {
-   ScaleTraitValue = 1.0;
-  }
-
-  for ( s in 1:NumSubjects ) {
-    NormTraitValue[s] = (TraitValue[s] - LocTraitValue) / ScaleTraitValue;
+    print("INFO: all trait values are either 0 or 1. Setting baseline odds to 1");
+    BaseLineLogOdds = 0.0;
   }
 
   // determine the sampling temperature
@@ -196,7 +190,6 @@ parameters {
   vector<lower=0>[SumNumAdmAlleles-NumSubjects*Ploidy*NumLoci] admAlleleProbParams; // must be transformed to get likelihood
   real<lower=0> sigmaNodeWeight; // hypo-parameter
   vector[NumNodes] nodeWeights; // must be transformed to make allele weights
-  real<lower=0> sigmaTraitValue; // hypo-parameter
 }
 
 transformed parameters {
@@ -235,17 +228,15 @@ transformed parameters {
 
     int sl = LeftAdmAlleleCombBnds[s]; int sr = RightAdmAlleleCombBnds[s];
     for ( sc in sl:sr ) {
-      real sum_allele_weights = sum(alleleWeights[to_array_1d(AdmAlleleIdxCombs[sc,:,:])]);
+      real sum_allele_weights sum_allele_weights = sum(alleleWeights[to_array_1d(AdmAlleleIdxCombs[sc,:,:])]);
       logprobs[sc-sl+1] = log(prod(admAlleleProbs[to_array_1d(AdmAlleleProbIdxCombs[sc,:,:])]));
 
       if ( TraitCensorType[s] == 0 ) { // uncensored
-	       loglikes[sc-sl+1] = normal_lpdf(NormTraitValue[s] | sum_allele_weights, sigmaTraitValue);
-      } else if ( TraitCensorType[s] == 1 ) { // left censored
-	       loglikes[sc-sl+1] = normal_lcdf(NormTraitValue[s] | sum_allele_weights, sigmaTraitValue);
-      } else if ( TraitCensorType[s] == 2 ) { // right censored
-	       loglikes[sc-sl+1] = normal_lccdf(NormTraitValue[s] | sum_allele_weights, sigmaTraitValue);
-      } else { // missing value
-	       loglikes[sc-sl+1] = 0.0;
+        loglikes[sc-sl+1] = bernoulli_logit_lpmf(TraitValue[s] | sum_allele_weights + BaseLineLogOdds);
+      } else if ( TraitCensorType[s] == 3 ) { // missing
+        loglikes[sc-sl+1] = 0.0;
+      } else { // left or right censoring codes are invalid
+      	reject("ERROR: invalid censoring code");
       }
     }
     traitValueLoglikes[s] = log_sum_exp(loglikes + logprobs);
@@ -254,8 +245,7 @@ transformed parameters {
 
 model {
   for ( ell in 1:NumLoci ) {
-    int al = LeftAlleleBnds[ell];
-    int ar = RightAlleleBnds[ell]; // alias
+    int al = LeftAlleleBnds[ell]; int ar = RightAlleleBnds[ell]; // alias
     // Dirichlet priors for the allele frequencies
     alleleFreqs[al:ar] ~ dirichlet(rep_vector(0.5, NumAlleles[ell])); // Jeffreys prior ?
     // correct mor manual simplex transformations
@@ -298,10 +288,5 @@ model {
 }
 
 generated quantities {
-  vector[NumNodes] rescaledNodeWeights; // transform node weights back to TraitValue scale
-  vector[SumNumAlleles] rescaledAlleleWeights; // transform node weights back to TraitValue scale
   real sumTraitValueLoglikes = sum(traitValueLoglikes); // for WBIC computation
-
-  rescaledNodeWeights = ScaleTraitValue * nodeWeights;
-  rescaledAlleleWeights = ScaleTraitValue * alleleWeights;
 }

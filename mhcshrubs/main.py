@@ -13,6 +13,7 @@ import warnings
 import numpy as np ## log transform
 from mhcshrubs import (crossval, fittrees, mhcclus, sequences, compare, mhctools, fetcher)
 from mhcshrubs import auxiliary as aux
+from mhcshrubs import definitions as defn
 
 
 def main():
@@ -60,9 +61,9 @@ def main():
                         help="""multiplicity of homozygous branch weights...
                         single: the 'generalized homozygosity' model,
                         double: count double weights twice (default)""")
-    parser.add_argument("--hetr-adv", dest="hetr_adv", type=str, default=None, choices=["tree", "discreet"],
+    parser.add_argument("--hetr-adv", dest="hetr_adv", type=str, default=None, choices=["tree", "discrete"],
                         help="""add a parameter representing the heterozygote advantage.
-                        discreet: The level of heterozygosity is calculated by allele identity,
+                        discrete: The level of heterozygosity is calculated by allele identity,
                         tree: use the MHC tree to compute 'fractional' heterozygosity.""")
     parser.add_argument("--chain-len", dest="chain_len", type=int, default=10000,
                         help="""the length of the MCMC before thinning (default: 10000).
@@ -134,7 +135,7 @@ def main():
         elif answer in ['n', 'N']:
             return 0 ## abort
 
-    ## input files TODO: specify in parameter file, or the command line
+    ## input files
     patientFileName = parDict["subjectFileName"]
     hlaFileName = parDict["alleleFreqFileName"]
     pSeqFileName = parDict["pSeqFileName"]
@@ -142,11 +143,11 @@ def main():
 
     ## select a file with an amino-acid similarity matrix
     if args.aa_similarity == "pmbec":
-        aaCovFileName = "data/hla/PMBEC.MAT"
+        aaCovFileName = os.path.join("resources", "PMBEC.MAT")
     elif args.aa_similarity == "blosum62":
-        aaCovFileName = "data/hla/BLOSUM62"
+        aaCovFileName = os.path.join("resources", "BLOSUM62")
     elif args.aa_similarity == "blosum50":
-        aaCovFileName = "data/hla/BLOSUM50"
+        aaCovFileName = os.path.join("resources", "BLOSUM50")
     elif args.aa_similarity == "manhattan":
         raise Exception("Manhattan distance is not implemented yet") ## TODO: use a different system
     else:
@@ -183,7 +184,7 @@ def main():
     hlaFileName = os.path.join(work_folder, hlaFileName)
     pSeqFileName = os.path.join(work_folder, pSeqFileName)
     fastaFileName = os.path.join(work_folder, fastaFileName)
-    aaCovFileName = os.path.join(work_folder, aaCovFileName)
+    aaCovFileName = os.path.join(defn.ROOT_DIR, aaCovFileName)
     summaryFileName = os.path.join(work_folder, summaryFileName)
 
     ## by default: pass parallel=True to functions
@@ -194,46 +195,35 @@ def main():
                             dry_run=args.dry_run, chain_len=args.chain_len,
                             chain_thin=args.chain_thin, name_base=name_base)
     elif args.model == "tree":
+        kwargs = {
+            "dry_run"       : args.dry_run,
+            "use_cache"     : args.use_cache,
+            "chain_len"     : args.chain_len,
+            "chain_thin"    : args.chain_thin,
+            "num_chains"    : args.num_chains,
+            "name_base"     : name_base,
+            "prior"         : args.prior,
+            "multiplicity"  : args.multiplicity,
+            "hetr_adv"      : args.hetr_adv,
+            "sampler"       : args.sampler,
+            "cross_val"     : args.cross_val,
+            "parallel"      : parallel
+        }
         if args.mhc_similarity == "trivial":
-            result = funFitNotree(patientFileName, hlaFileName, summaryFileName, parDict,
-                         dry_run=args.dry_run, use_cache=args.use_cache,
-                         chain_len=args.chain_len, chain_thin=args.chain_thin,
-                         name_base=name_base, prior=args.prior,
-                         multiplicity=args.multiplicity, hetr_adv=args.hetr_adv,
-                         sampler=args.sampler, cross_val=args.cross_val, parallel=parallel,
-                         num_chains=args.num_chains)
+            result = funFitNotree(patientFileName, hlaFileName, summaryFileName,
+                parDict, **kwargs)
         elif args.mhc_similarity == "group":
-            result = funFitGroup(patientFileName, hlaFileName, summaryFileName, parDict,
-                        dry_run=args.dry_run, use_cache=args.use_cache,
-                        chain_len=args.chain_len, chain_thin=args.chain_thin,
-                        name_base=name_base, prior=args.prior,
-                        multiplicity=args.multiplicity, hetr_adv=args.hetr_adv, sampler=args.sampler,
-                        cross_val=args.cross_val, parallel=parallel, num_chains=args.num_chains)
+            result = funFitGroup(patientFileName, hlaFileName, summaryFileName,
+                parDict, **kwargs)
         elif args.mhc_similarity == "pseudoseq":
             result = funFitTree(patientFileName, hlaFileName, pSeqFileName,
-                       aaCovFileName, summaryFileName, parDict,
-                       dry_run=args.dry_run, use_cache=args.use_cache, chain_len=args.chain_len,
-                       chain_thin=args.chain_thin,
-                       name_base=name_base, prior=args.prior, multiplicity=args.multiplicity,
-                       hetr_adv=args.hetr_adv,
-                       sampler=args.sampler, cross_val=args.cross_val, parallel=parallel,
-                       num_chains=args.num_chains)
+                       aaCovFileName, summaryFileName, parDict, **kwargs)
         elif args.mhc_similarity == "kir":
-            result = funFitKirTree(patientFileName, hlaFileName, aaCovFileName, summaryFileName, parDict,
-                          dry_run=args.dry_run, use_cache=args.use_cache, chain_len=args.chain_len,
-                          chain_thin=args.chain_thin,
-                          name_base=name_base, prior=args.prior, multiplicity=args.multiplicity,
-                          hetr_adv=args.hetr_adv,
-                          sampler=args.sampler, cross_val=args.cross_val, parallel=parallel,
-                          num_chains=args.num_chains)
+            result = funFitKirTree(patientFileName, hlaFileName, aaCovFileName,
+                summaryFileName, parDict, **kwargs)
         elif args.mhc_similarity == "binding":
-            result = funFitBindingTree(patientFileName, hlaFileName, fastaFileName, summaryFileName, parDict,
-                              dry_run=args.dry_run, use_cache=args.use_cache, chain_len=args.chain_len,
-                              chain_thin=args.chain_thin,
-                              name_base=name_base, prior=args.prior, multiplicity=args.multiplicity,
-                              hetr_adv=args.hetr_adv,
-                              sampler=args.sampler, cross_val=args.cross_val, parallel=parallel,
-                              num_chains=args.num_chains)
+            result = funFitBindingTree(patientFileName, hlaFileName, fastaFileName,
+                summaryFileName, parDict, **kwargs)
         else:
             raise Exception("MHC similarity '{}' not implemented".format(args.mhc_similarity))
     elif args.model == "pmm":

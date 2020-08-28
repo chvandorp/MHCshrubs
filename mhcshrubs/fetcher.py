@@ -13,6 +13,7 @@ import os
 import warnings
 
 from mhcshrubs import auxiliary as aux
+from mhcshrubs import definitions as defn
 from mhcshrubs import mhctools
 
 def importAlleleFrequencyData(fileName): ## "mhc-top0.99counts-ncbi-Sub-Saharan-Africa.tsv"
@@ -111,20 +112,20 @@ def importSubjectData(fileName, traitFieldName, alleleFieldNames, subset=None,
     traitCensFieldName = "{0}_censoring".format(traitFieldName)
     CensCodes = np.array([subject[traitCensFieldName]
                           if traitCensFieldName in subject.keys()
-                          else aux.uncensored_code ## FIXME, make sure that this is consistant
+                          else defn.uncensored_code ## FIXME, make sure that this is consistant
                           for subject in data])
 
     TraitValues = np.array([traitTransform(float(subject[traitFieldName]))
-                            if cens_code == aux.uncensored_code
+                            if cens_code == defn.uncensored_code
                             else np.nan
                             for cens_code, subject in zip(CensCodes, data)])
 
     ## find the upper or lower bound for the left and (resp.) right censored VLs.
     ## FIXME For the non-interval-censored data, use an arbitrary (low) Trait value as lower bound
     CensBounds = np.array([traitTransform(float(subject[traitFieldName]))
-                           if cens_code == aux.left_censored_code
-                           or cens_code == aux.right_censored_code
-                           else aux.auxiliaryLowerCensBound
+                           if cens_code == defn.left_censored_code
+                           or cens_code == defn.right_censored_code
+                           else defn.auxiliaryLowerCensBound
                            for cens_code, subject in zip(CensCodes, data)])
     if verbose:
         ## number op subjects

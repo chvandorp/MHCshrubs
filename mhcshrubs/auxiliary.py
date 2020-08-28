@@ -7,12 +7,6 @@ import os
 import sys
 from subprocess import Popen, PIPE ## for X11 check
 
-missing_code = "missing" ## TODO: parameters
-left_censored_code = "left_censored" ## the given value is an upper bound
-right_censored_code = "right_censored" ## the given value is a lower bound
-uncensored_code = "uncensored"
-
-auxiliaryLowerCensBound = 0.0 ## TODO: used in JAGS. is this nescesary?
 
 def fst(pair): (a, _) = pair; return a
 

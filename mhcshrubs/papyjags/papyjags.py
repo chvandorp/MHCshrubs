@@ -35,6 +35,10 @@ def fst(pair): (a, _) = pair; return a
 def snd(pair): (_, b) = pair; return b
 def transpose(xss): return [[xs[i] for xs in xss] for i in range(len(xss[0]))]
 
+def isJagsInstalled():
+    """Check whether `jags` is in the PATH and marked as executable"""
+    from shutil import which
+    return which("jags") is not None
 
 ## functions to simulate the R-dump-file
 def RdumpScalar(name, x):
