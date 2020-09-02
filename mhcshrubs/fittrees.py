@@ -278,7 +278,7 @@ def fitNullModel(dataDict, parDict, chain_len=1000, chain_thin=10, num_chains=4,
         modelName += "." + ".".join(hla.Newick_str() for hla in leaveOutAlleles)
 
     ## choose the right jags model
-    file_name = os.path.join(defn.ROOT_DIR, "jags/null-model.bug")
+    file_name = os.path.join(defn.ROOT_DIR, "jags", "null-model.bug")
 
     ## choose a working folder
     work_folder = os.getcwd()
@@ -320,6 +320,139 @@ def fitNullModel(dataDict, parDict, chain_len=1000, chain_thin=10, num_chains=4,
         "leaveOutPatientIdxs" : leaveOutPatientIdxs
     }
     return rd
+
+
+
+def fitNullModelCat(dataDict, parDict, chain_len=1000, chain_thin=10, num_chains=4,
+                    parallel=True, leaveOutAlleles=[], modelName="null",
+                    verbose=False, dry_run=False, use_cache=False):
+    """
+    Fit the null model to categorical data.
+
+    The null model is just a Multinomial model for the trait with no effect of HLA.
+
+    Args:
+        dataDict -- a dictionary with the following fields
+            - TraitValues -- the response variable
+            - CensCodes -- codes indicating censoring of the response variable
+            - Categories -- possible values of TraitValues
+            - AlleleVecs -- vectors indicating alleles
+            - Alleles -- a list of alleles in the correct order
+        parDict -- a dictionary with the following fields
+            - outputFolder -- folder for writing output
+            - TODO
+
+    Kwargs:
+        chain_len -- the length of the MCMC (default: 1000)
+        chain_thin -- the amount of thinning for the MCMC (default: 10)
+        num_chains -- the number of independent chains (default: 4)
+        parallel -- run independent chains concurrently (default: True)
+        leaveOutAlleles -- mask VL of patients with a particular HLA allele (default: [])
+        modelName -- identifier used for filenames (default: null)
+        verbose -- print messages (default: False)
+        dry_run -- don't run JAGS (default: False)
+
+    Returns:
+        a dictionary with
+            - WAIC -- the WAIC of the run
+            - chain -- a dictionary with the traces of the model parameters
+            - leaveOutPatientIdxs -- indices of patients that were left out for cross validation
+    """
+    ## get the data
+    traitValues = dataDict["TraitValues"]
+    traitCensCodes = dataDict["CensCodes"]
+    traitCategories = dataDict["Categories"]
+    patientAlleleVecs = dataDict["AlleleVecs"]
+    hlaAlleles = dataDict["Alleles"]
+    loci = sorted(hlaAlleles.keys())
+
+    leaveOutAlleleVec = {locus : [hla in leaveOutAlleles for hla in hlaAlleles[locus]] for locus in loci}
+
+    ## find patients that should be left out
+    def hasForbiddenAllele(av, locus):
+        return any(aux.flatten([[a1 and a2 for a1, a2 in zip(av[i], leaveOutAlleleVec[locus])]
+                                for i in range(2)]))
+
+    leaveOutPatientIdxs = sorted(aux.flatten([[i for i, av in enumerate(patientAlleleVecs[X])
+                                              if hasForbiddenAllele(av, X)] for X in loci]))
+
+    ## set the traitValue (and censoring) of the left-out patients to NaN (and the proper censoring code)
+    traitValues = [X if i not in leaveOutPatientIdxs else np.nan
+                     for i, X in enumerate(traitValues)]
+    traitCensCodes = [code if i not in leaveOutPatientIdxs else defn.missing_code
+                   for i, code in enumerate(traitCensCodes)]
+
+    ## map trait-values to 0/1
+    if len(traitCategories) != 2:
+        raise Exception("invalid number of categories: only binary outcomes are implemented")
+    def cat_map(x):
+        if x == traitCategories[0]:
+            return 0
+        elif x == traitCategories[1]:
+            return 1
+        raise Exception(f"trait value {x} not in category list")
+    traitValues = [cat_map(x) if c == defn.uncensored_code else np.nan
+                   for x, c in zip(traitValues, traitCensCodes)]
+
+    ## prepare data for JAGS
+    N = len(traitValues)
+
+    dataDict = {
+        "N" : N,
+        "Y" : traitValues,
+    }
+
+    parameters = ["alpha", "log_like", "Q", "R2"]
+
+    ## add a specifier to the model name to indicate left out alleles
+    if len(leaveOutAlleles) > 0:
+        modelName += "." + ".".join(hla.Newick_str() for hla in leaveOutAlleles)
+
+    ## choose the right jags model
+    file_name = os.path.join(defn.ROOT_DIR, "jags", "null-model-binary.bug")
+
+    ## choose a working folder
+    work_folder = os.getcwd()
+    ## check folder for output
+    if "outputFolder" in parDict.keys():
+        outputFolder = os.path.join(work_folder, parDict["outputFolder"])
+    else:
+        outputFolder = os.path.join(work_folder, "data")
+    ## TODO: make sure this folder and a figures subfolder exists
+
+    path = os.path.join(outputFolder, "jags-cache")
+
+    ## make a JAGS model object
+    jm = ppj.JagsModel(file_name=file_name, model_name=modelName, path=path)
+
+    ## run the JAGS model
+    jm.sampling(data=dataDict, pars=parameters, iter=chain_len,
+                chains=num_chains, warmup=chain_len, thin=chain_thin,
+                verbose=verbose, dry_run=dry_run, parallel=parallel)
+    if len(jm.sams) > 0:
+        chain = ppj.mergeChains(jm.sams)
+        ## calculate statistics...
+        WAIC = statistics.calcWAIC(chain["log_like"], verbose)
+        if len(jm.sams) > 1:
+            Rhat = dict((pn, statistics.calcGelmanRubinRhat(jm.sams, pn)) for pn in parameters)
+        else:
+            Rhat = {}
+    else:
+        if verbose:
+            print("no sample generated or no cached sample found.")
+        chain = {}
+        WAIC = np.nan
+        Rhat = {}
+    ## return a dictionary
+    rd = {
+        "WAIC" : WAIC,
+        "Rhat" : Rhat,
+        "chain" : chain,
+        "leaveOutPatientIdxs" : leaveOutPatientIdxs
+    }
+    return rd
+
+
 
 
 def fitTreeWeights(dataDict, parDict, hlaFileName, hlaNewickString,

@@ -26,7 +26,7 @@ data {
 model {
     ## loop over the N patients
     for ( i in 1:N ) {
-        log_like[i] <- log(dbern(Y[i], Q[i])) ## used for WAIC
+        log_like[i] <- log(dbin(Y[i], Q[i], 1)) ## used for WAIC
         ## likelihood of observation Y, given predicted probability Q
         Y[i] ~ dbern(Q[i])
         ## the predicted probabiltiy is determined by the weights (beta) of the HLA alleles

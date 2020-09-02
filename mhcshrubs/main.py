@@ -480,12 +480,31 @@ def funFitNull(subjectFileName, summaryFileName, parDict,
                dry_run=False, use_cache=False, name_base="anon", sampler="jags",
                parallel=True):
     traitFieldName = parDict["traitFieldName"]
+    ## determine the type of trait (continuous or categorical)
+    traitType = parDict["traitType"]
+    if traitType == "categorical":
+        categorical = True
+    elif traitType == "continuous":
+        categorical = False
+    else:
+        raise Exception(f"invalid traitType '{traitType}' in json file")
+    traitTransform = (lambda x: x) if categorical else np.log10 ## FIXME!!
+    ## get alleles field names (TODO: implement this in the null models)
     alleleFieldNames = parDict["alleleFieldNames"]
-    dataDict = fetcher.importSubjectData(subjectFileName, traitFieldName, alleleFieldNames,
-                                         verbose=True, traitTransform=np.log10)
+    dataDict = fetcher.importSubjectData(subjectFileName, traitFieldName,
+                                         alleleFieldNames, verbose=True,
+                                         traitTransform=traitTransform,
+                                         categorical=categorical)
     ## the null model does not require any HLA data
-    result = fittrees.fitNullModel(dataDict, parDict, chain_len=chain_len, chain_thin=chain_thin,
-                                   num_chains=num_chains, modelName=name_base,
-                                   verbose=True, dry_run=dry_run,
-                                   use_cache=use_cache, parallel=parallel)
+    if categorical:
+        result = fittrees.fitNullModelCat(dataDict, parDict, chain_len=chain_len, chain_thin=chain_thin,
+                                          num_chains=num_chains, modelName=name_base,
+                                          verbose=True, dry_run=dry_run,
+                                          use_cache=use_cache, parallel=parallel)
+    else: ## continuous data
+        result = fittrees.fitNullModel(dataDict, parDict, chain_len=chain_len, chain_thin=chain_thin,
+                                       num_chains=num_chains, modelName=name_base,
+                                       verbose=True, dry_run=dry_run,
+                                       use_cache=use_cache, parallel=parallel)
+
     return result
