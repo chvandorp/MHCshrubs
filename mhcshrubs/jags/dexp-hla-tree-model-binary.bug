@@ -26,7 +26,7 @@ data {
 model {
     ## loop over the N patients
     for ( i in 1:N ) {
-        log_like[i] <- log(dbin(Y[i], Q[i], 1)) ## used for WAIC: HACK: dbern not defined
+        log_like[i] <- log(dbern(Y[i], Q[i])) ## used for WAIC
         ## likelihood of observation Y, given predicted probability Q
         Y[i] ~ dbern(Q[i])
         ## the predicted probabiltiy is determined by the weights (beta) of the HLA alleles
@@ -79,7 +79,7 @@ model {
     ## prior on the weights of the nodes. The vector betaNodes contains
     ## the weights of the nodes of the HLA tree
     for ( k in 1:K ) {
-        betaNodes[k] ~ dnorm(0.0, tau_beta)
+        betaNodes[k] ~ ddexp(0.0, sqrt(2*tau_beta)) ## tau is precision (1/var)
     }
     ## precision of the node weight distribution
     tau_beta ~ dgamma(precision, precision)

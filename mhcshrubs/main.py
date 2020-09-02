@@ -136,10 +136,10 @@ def main():
             return 0 ## abort
 
     ## input files
-    patientFileName = parDict["subjectFileName"]
-    hlaFileName = parDict["alleleFreqFileName"]
-    pSeqFileName = parDict["pSeqFileName"]
-    fastaFileName = parDict["fastaFileName"]
+    subjectFileName = parDict["subjectFileName"]
+    hlaFileName = parDict["alleleFreqFileName"] if "alleleFreqFileName" in parDict.keys() else None
+    pSeqFileName = parDict["pSeqFileName"] if "pSeqFileName" in parDict.keys() else None
+    fastaFileName = parDict["fastaFileName"] if "fastaFileName" in parDict.keys() else None
 
     ## select a file with an amino-acid similarity matrix
     if args.aa_similarity == "pmbec":
@@ -180,10 +180,13 @@ def main():
 
     print("\nworking from folder:", work_folder)
 
-    patientFileName = os.path.join(work_folder, patientFileName)
-    hlaFileName = os.path.join(work_folder, hlaFileName)
-    pSeqFileName = os.path.join(work_folder, pSeqFileName)
-    fastaFileName = os.path.join(work_folder, fastaFileName)
+    subjectFileName = os.path.join(work_folder, subjectFileName)
+    if hlaFileName is not None:
+        hlaFileName = os.path.join(work_folder, hlaFileName)
+    if pSeqFileName is not None:
+        pSeqFileName = os.path.join(work_folder, pSeqFileName)
+    if fastaFileName is not None:
+        fastaFileName = os.path.join(work_folder, fastaFileName)
     aaCovFileName = os.path.join(defn.ROOT_DIR, aaCovFileName)
     summaryFileName = os.path.join(work_folder, summaryFileName)
 
@@ -191,7 +194,7 @@ def main():
     parallel = False if args.no_concurrency else True
 
     if args.model == "null":
-        result = funFitNull(patientFileName, summaryFileName, parDict,
+        result = funFitNull(subjectFileName, summaryFileName, parDict,
                             dry_run=args.dry_run, chain_len=args.chain_len,
                             chain_thin=args.chain_thin, name_base=name_base)
     elif args.model == "tree":
@@ -210,24 +213,28 @@ def main():
             "parallel"      : parallel
         }
         if args.mhc_similarity == "trivial":
-            result = funFitNotree(patientFileName, hlaFileName, summaryFileName,
+            result = funFitNotree(subjectFileName, hlaFileName, summaryFileName,
                 parDict, **kwargs)
         elif args.mhc_similarity == "group":
-            result = funFitGroup(patientFileName, hlaFileName, summaryFileName,
+            result = funFitGroup(subjectFileName, hlaFileName, summaryFileName,
                 parDict, **kwargs)
         elif args.mhc_similarity == "pseudoseq":
-            result = funFitTree(patientFileName, hlaFileName, pSeqFileName,
+            if pSeqFileName is None:
+                raise Exception("no field 'pSeqFileName' found in json file, which is required for option 'pseudoseq'")
+            result = funFitTree(subjectFileName, hlaFileName, pSeqFileName,
                        aaCovFileName, summaryFileName, parDict, **kwargs)
         elif args.mhc_similarity == "kir":
-            result = funFitKirTree(patientFileName, hlaFileName, aaCovFileName,
+            result = funFitKirTree(subjectFileName, hlaFileName, aaCovFileName,
                 summaryFileName, parDict, **kwargs)
         elif args.mhc_similarity == "binding":
-            result = funFitBindingTree(patientFileName, hlaFileName, fastaFileName,
+            if fastaFileName is None:
+                raise Exception("no field 'fastaFileName' found in json file, which is required for option 'binding'")
+            result = funFitBindingTree(subjectFileName, hlaFileName, fastaFileName,
                 summaryFileName, parDict, **kwargs)
         else:
             raise Exception("MHC similarity '{}' not implemented".format(args.mhc_similarity))
     elif args.model == "pmm":
-        result = funFitPMM(patientFileName, hlaFileName, pSeqFileName,
+        result = funFitPMM(subjectFileName, hlaFileName, pSeqFileName,
                            aaCovFileName, summaryFileName, parDict,
                            dry_run=args.dry_run, use_cache=args.use_cache,
                            chain_len=args.chain_len, chain_thin=args.chain_thin,
@@ -239,14 +246,25 @@ def main():
     return 0
 
 
-def funFitTree(patientFileName, hlaFileName, pSeqFileName, aaCovFileName, summaryFileName,
+def funFitTree(subjectFileName, hlaFileName, pSeqFileName, aaCovFileName, summaryFileName,
                parDict, chain_len=1000, chain_thin=10, num_chains=4, dry_run=False,
                use_cache=False, name_base="anon", prior="norm", multiplicity="double", hetr_adv=None,
                sampler="jags", cross_val=None, parallel=True):
+    ## get data
     traitFieldName = parDict["traitFieldName"]
+    ## determine the type of trait (continuous or categorical)
+    traitType = parDict["traitType"]
+    if traitType == "categorical":
+        categorical = True
+    elif traitType == "continuous":
+        categorical = False
+    else:
+        raise Exception(f"invalid traitType '{traitType}' in json file")
+    traitTransform = (lambda x: x) if categorical else np.log10 ## FIXME!!
     alleleFieldNames = parDict["alleleFieldNames"]
-    dataDict = fetcher.importSubjectData(patientFileName, traitFieldName, alleleFieldNames,
-                                         verbose=True, traitTransform=np.log10)
+    dataDict = fetcher.importSubjectData(subjectFileName, traitFieldName, alleleFieldNames,
+                                         verbose=True, traitTransform=traitTransform,
+                                         categorical=categorical)
     hlaAlleles = dataDict["Alleles"]
     ## define models by their HLA tree
     pSeqDict = mhcclus.mkPseqDict(pSeqFileName)
@@ -262,20 +280,31 @@ def funFitTree(patientFileName, hlaFileName, pSeqFileName, aaCovFileName, summar
     ## run the model
     if cross_val is None: ## simple case: fit one model
         if sampler == "jags":
-            result = fittrees.fitTreeWeights(dataDict, parDict, hlaFileName, newick_str_pseq,
-                                             represDict=represDict, chain_len=chain_len,
-                                             chain_thin=chain_thin, num_chains=num_chains, modelName=name_base,
-                                             verbose=True, dry_run=dry_run, use_cache=use_cache,
-                                             prior=prior, multiplicity=multiplicity, hetr_adv=hetr_adv, parallel=parallel)
-        elif sampler == "stan":
-            result = fittrees.fitTreeWeightsStan(dataDict, parDict, hlaFileName, newick_str_pseq,
+            if categorical:
+                result = fittrees.fitTreeWeightsCat(dataDict, parDict, hlaFileName, newick_str_pseq,
+                                                    represDict=represDict, chain_len=chain_len,
+                                                    chain_thin=chain_thin, num_chains=num_chains, modelName=name_base,
+                                                    verbose=True, dry_run=dry_run, use_cache=use_cache,
+                                                    prior=prior, multiplicity=multiplicity, hetr_adv=hetr_adv, parallel=parallel)
+            else:
+                result = fittrees.fitTreeWeights(dataDict, parDict, hlaFileName, newick_str_pseq,
                                                  represDict=represDict, chain_len=chain_len,
                                                  chain_thin=chain_thin, num_chains=num_chains, modelName=name_base,
                                                  verbose=True, dry_run=dry_run, use_cache=use_cache,
-                                                 prior=prior, multiplicity=multiplicity, hetr_adv=hetr_adv, wbic_sampling=False)
+                                                 prior=prior, multiplicity=multiplicity, hetr_adv=hetr_adv, parallel=parallel)
+        elif sampler == "stan":
+            if categorical:
+                raise Exception("categorical Stan sampler not implemented")
+            else:
+                result = fittrees.fitTreeWeightsStan(dataDict, parDict, hlaFileName, newick_str_pseq,
+                                                     represDict=represDict, chain_len=chain_len,
+                                                     chain_thin=chain_thin, num_chains=num_chains, modelName=name_base,
+                                                     verbose=True, dry_run=dry_run, use_cache=use_cache,
+                                                     prior=prior, multiplicity=multiplicity, hetr_adv=hetr_adv, wbic_sampling=False)
         else:
-            raise Exception("invalid sampler '{}' given".format(sampler))
+            raise Exception(f"invalid sampler '{sampler}' given")
     elif cross_val == "alleles": ## use loo-allele cross-validation
+        ## TODO: categorical data
         result = crossval.crossValidateAlleles(dataDict, parDict, hlaFileName, newick_str_pseq,
                                                summaryFileName, represDict=represDict,
                                                chain_len=chain_len, chain_thin=chain_thin,
@@ -288,13 +317,13 @@ def funFitTree(patientFileName, hlaFileName, pSeqFileName, aaCovFileName, summar
     return result
 
 
-def funFitKirTree(patientFileName, hlaFileName, aaCovFileName, summaryFileName, parDict,
+def funFitKirTree(subjectFileName, hlaFileName, aaCovFileName, summaryFileName, parDict,
                   chain_len=1000, chain_thin=10, num_chains=4, dry_run=False, use_cache=False,
                   name_base="anon", prior="norm", multiplicity="double", hetr_adv=None,
                   sampler="jags", cross_val=None, parallel=True):
     traitFieldName = parDict["traitFieldName"]
     alleleFieldNames = parDict["alleleFieldNames"]
-    dataDict = fetcher.importSubjectData(patientFileName, traitFieldName, alleleFieldNames,
+    dataDict = fetcher.importSubjectData(subjectFileName, traitFieldName, alleleFieldNames,
                                          verbose=True, traitTransform=np.log10)
     hlaAlleles = dataDict["Alleles"]
 
@@ -317,13 +346,13 @@ def funFitKirTree(patientFileName, hlaFileName, aaCovFileName, summaryFileName, 
     return result
 
 
-def funFitBindingTree(patientFileName, hlaFileName, fastaFileName, summaryFileName, parDict,
+def funFitBindingTree(subjectFileName, hlaFileName, fastaFileName, summaryFileName, parDict,
                       chain_len=1000, chain_thin=10, num_chains=4, dry_run=False, use_cache=False,
                       name_base="anon", prior="norm", multiplicity="double", hetr_adv=None,
                       sampler="jags", cross_val=None, parallel=True):
     traitFieldName = parDict["traitFieldName"]
     alleleFieldNames = parDict["alleleFieldNames"]
-    dataDict = fetcher.importSubjectData(patientFileName, traitFieldName, alleleFieldNames,
+    dataDict = fetcher.importSubjectData(subjectFileName, traitFieldName, alleleFieldNames,
                                          verbose=True, traitTransform=np.log10)
     hlaAlleles = dataDict["Alleles"]
     ## choose a working folder for netMHC
@@ -345,14 +374,14 @@ def funFitBindingTree(patientFileName, hlaFileName, fastaFileName, summaryFileNa
     return result
 
 
-def funFitNotree(patientFileName, hlaFileName, summaryFileName, parDict,
+def funFitNotree(subjectFileName, hlaFileName, summaryFileName, parDict,
                  chain_len=1000, chain_thin=10, num_chains=4, dry_run=False,
                  use_cache=False, name_base="anon", prior="norm",
                  multiplicity="double", hetr_adv=None, sampler="jags",
                  cross_val=None, parallel=True):
     traitFieldName = parDict["traitFieldName"]
     alleleFieldNames = parDict["alleleFieldNames"]
-    dataDict = fetcher.importSubjectData(patientFileName, traitFieldName, alleleFieldNames,
+    dataDict = fetcher.importSubjectData(subjectFileName, traitFieldName, alleleFieldNames,
                                          verbose=True, traitTransform=np.log10)
     hlaAlleles = dataDict["Alleles"]
     ## make a trivial newick string
@@ -392,14 +421,14 @@ def funFitNotree(patientFileName, hlaFileName, summaryFileName, parDict,
     return result
 
 
-def funFitGroup(patientFileName, hlaFileName, summaryFileName, parDict,
+def funFitGroup(subjectFileName, hlaFileName, summaryFileName, parDict,
                 chain_len=1000, chain_thin=10, num_chains=4, dry_run=False,
                 use_cache=False, name_base="anon", prior="norm",
                 multiplicity="double", hetr_adv=None, sampler="jags",
                 cross_val=None, parallel=True):
     traitFieldName = parDict["traitFieldName"]
     alleleFieldNames = parDict["alleleFieldNames"]
-    dataDict = fetcher.importSubjectData(patientFileName, traitFieldName, alleleFieldNames,
+    dataDict = fetcher.importSubjectData(subjectFileName, traitFieldName, alleleFieldNames,
                                          verbose=True, traitTransform=np.log10)
     hlaAlleles = dataDict["Alleles"]
     ## make a trivial newick string
@@ -414,7 +443,7 @@ def funFitGroup(patientFileName, hlaFileName, summaryFileName, parDict,
     return result
 
 
-def funFitPMM(patientFileName, hlaFileName, pSeqFileName,
+def funFitPMM(subjectFileName, hlaFileName, pSeqFileName,
               aaCovFileName, summaryFileName, parDict,
               chain_len=1000, chain_thin=10, num_chains=4,
               dry_run=False, use_cache=False,
@@ -422,7 +451,7 @@ def funFitPMM(patientFileName, hlaFileName, pSeqFileName,
     """Todo: implement cross_val, PMM could also be used for many other situations..."""
     traitFieldName = parDict["traitFieldName"]
     alleleFieldNames = parDict["alleleFieldNames"]
-    dataDict = fetcher.importSubjectData(patientFileName, traitFieldName, alleleFieldNames,
+    dataDict = fetcher.importSubjectData(subjectFileName, traitFieldName, alleleFieldNames,
                                          verbose=True, traitTransform=np.log10)
     hlaAlleles = dataDict["Alleles"]
     ## define models by their HLA tree
@@ -446,13 +475,13 @@ def funFitPMM(patientFileName, hlaFileName, pSeqFileName,
     return result
 
 
-def funFitNull(patientFileName, summaryFileName, parDict,
+def funFitNull(subjectFileName, summaryFileName, parDict,
                chain_len=1000, chain_thin=10, num_chains=4,
                dry_run=False, use_cache=False, name_base="anon", sampler="jags",
                parallel=True):
     traitFieldName = parDict["traitFieldName"]
     alleleFieldNames = parDict["alleleFieldNames"]
-    dataDict = fetcher.importSubjectData(patientFileName, traitFieldName, alleleFieldNames,
+    dataDict = fetcher.importSubjectData(subjectFileName, traitFieldName, alleleFieldNames,
                                          verbose=True, traitTransform=np.log10)
     ## the null model does not require any HLA data
     result = fittrees.fitNullModel(dataDict, parDict, chain_len=chain_len, chain_thin=chain_thin,

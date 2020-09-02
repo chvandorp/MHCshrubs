@@ -80,6 +80,7 @@ following data:
   "pSeqFileName" : "data/hla/MHC_pseudo.dat", ## file with MHC pseudo sequences
   "fastaFileName" : "data/hiv/proteome-clade-C/Ref.C.ZA.04.04ZASK146.AY772699.fasta", ## file with a pathogen's proteome
   "traitFieldName" : "VL", ## the field name of the trait of interest in the subject file
+  "traitType" : "continuous", ## the type of trait: continuous or categorical
   "alleleFieldNames" : { ## the field names of the MHC loci in the subject file
     "A" : ["HLA_A1", "HLA_A2"],
     "B" : ["HLA_B1", "HLA_B2"],

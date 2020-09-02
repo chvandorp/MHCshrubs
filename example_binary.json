@@ -1,0 +1,13 @@
+{
+  "id" : "HCV",
+  "outputFolder" : "data/example_binary",
+  "subjectFileName" : "data/example_binary/subjects_resolved_nmp_all.tsv",
+  "pSeqFileName" : "data/MHC_pseudo.dat",
+  "traitFieldName" : "HCV_clr",
+  "traitType" : "categorical",
+  "alleleFieldNames" : {
+    "A" : ["HLA_A1_resolved", "HLA_A2_resolved"],
+    "B" : ["HLA_B1_resolved", "HLA_B2_resolved"],
+    "C" : ["HLA_C1_resolved", "HLA_C2_resolved"]
+  }
+}

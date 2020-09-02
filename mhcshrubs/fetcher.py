@@ -19,7 +19,8 @@ from mhcshrubs import mhctools
 def importAlleleFrequencyData(fileName): ## "mhc-top0.99counts-ncbi-Sub-Saharan-Africa.tsv"
     """
     input: name of the file with frequency data.
-    output: a dictionary with HLA counts
+    output: a dictionary with HLA counts, of the form
+        MhcObject -> int
     """
     with open(fileName, 'r') as fileHandle:
         table = [row.split('\t') for row in fileHandle.read().split('\n') if row != '']
@@ -30,7 +31,7 @@ def importAlleleFrequencyData(fileName): ## "mhc-top0.99counts-ncbi-Sub-Saharan-
 
 
 def importSubjectData(fileName, traitFieldName, alleleFieldNames, subset=None,
-                      verbose=False, traitTransform=(lambda x: x)):
+                      verbose=False, traitTransform=(lambda x: x), categorical=False):
     """
     Import MHC data and continuous disease traits.
 
@@ -48,18 +49,24 @@ def importSubjectData(fileName, traitFieldName, alleleFieldNames, subset=None,
         verbose (bool): print some basic statistics on the imported data.
         traitTransform (function): a funcion to transform the trait value.
             For instance numpy.log, or the identity (default)
+        categorical (bool): True if the trait is categorical, False otherwise (default).
+            Use traitTransform to map string to required values (e.g. 0/1)
 
     Returns:
         A dictionary containing
             - TraitValues: the trait values
             - CensCodes: censoring codes for the TraitValues
             - CensBounds: upper (or lower) bounds for left (or right) censored Trait
+                Only included if not categorical
+            - Categories: a list of possible traitValues
+                Only included if categorical
             - AlleleVecs: admissible alleles
             - Alleles: the alleles in the dataset, in the right order for the allele vectors
 
     Todo:
         - Intelligently handle censoring codes
         - Give a good discription of the expected file format
+        - Allow for covariates
     """
     ## detect if the file is tsv or csv
     file_base, file_extension = os.path.splitext(fileName)
@@ -68,15 +75,12 @@ def importSubjectData(fileName, traitFieldName, alleleFieldNames, subset=None,
     elif file_extension == ".tsv":
         delim = '\t'
     else:
-        raise Exception("invalid file format")
+        raise Exception("invalid file format (csv or tsv expected)")
     ## read the contents of the file
     with open(fileName, 'r') as fileHandle:
         reader = csv.DictReader(fileHandle, delimiter=delim)
         data = [row for row in reader]
-        ## FIXME: quick bodge for CMV: filter out negatives
-        if traitFieldName == "CMV":
-            data = [row for row in data if np.log10(float(row[traitFieldName])) > -0.3 ]
-    ## take a sub sample
+    ## take a sub-sample
     if subset is not None:
         idxs = np.random.choice(len(data), size=subset, replace=False)
         data = [data[i] for i in idxs]
@@ -108,33 +112,46 @@ def importSubjectData(fileName, traitFieldName, alleleFieldNames, subset=None,
                               for i in range(Ploidy)]
                              for subject in data]
 
-    ## get the virus load and virus load censoring information
+    ## get the trait values and censoring information
     traitCensFieldName = "{0}_censoring".format(traitFieldName)
     CensCodes = np.array([subject[traitCensFieldName]
                           if traitCensFieldName in subject.keys()
                           else defn.uncensored_code ## FIXME, make sure that this is consistant
                           for subject in data])
-
-    TraitValues = np.array([traitTransform(float(subject[traitFieldName]))
-                            if cens_code == defn.uncensored_code
-                            else np.nan
-                            for cens_code, subject in zip(CensCodes, data)])
-
-    ## find the upper or lower bound for the left and (resp.) right censored VLs.
-    ## FIXME For the non-interval-censored data, use an arbitrary (low) Trait value as lower bound
-    CensBounds = np.array([traitTransform(float(subject[traitFieldName]))
-                           if cens_code == defn.left_censored_code
-                           or cens_code == defn.right_censored_code
-                           else defn.auxiliaryLowerCensBound
-                           for cens_code, subject in zip(CensCodes, data)])
+    if not categorical:
+        TraitValues = np.array([traitTransform(float(subject[traitFieldName]))
+                                if cens_code == defn.uncensored_code
+                                else np.nan
+                                for cens_code, subject in zip(CensCodes, data)])
+        ## find the upper or lower bound for the left and (resp.) right censored values
+        ## FIXME For the non-interval-censored data, use an arbitrary (low) Trait value as lower bound
+        CensBounds = np.array([traitTransform(float(subject[traitFieldName]))
+                               if cens_code == defn.left_censored_code
+                               or cens_code == defn.right_censored_code
+                               else defn.auxiliaryLowerCensBound
+                               for cens_code, subject in zip(CensCodes, data)])
+    else: ## the trait is categorical: Censoring can only be missing or uncensored
+        TraitValues = np.array([traitTransform(subject[traitFieldName])
+                                if cens_code == defn.uncensored_code
+                                else np.nan
+                                for cens_code, subject in zip(CensCodes, data)])
+    ## make a list of possible trait values
+    Categories = aux.unique([x for x, c in zip(TraitValues, CensCodes)
+                             if c == defn.uncensored_code])
     if verbose:
         ## number op subjects
         print("number of subjects: {0}".format(len(data)))
         ## Trait statistics
-        mtrait = np.nanmedian(TraitValues)
-        ltrait = np.nanpercentile(TraitValues, 2.5)
-        htrait = np.nanpercentile(TraitValues, 97.5)
-        print("median trait value: {0:0.2f}, 2.5 - 97.5 percentiles: {1:0.2f} - {2:0.2f}".format(mtrait, ltrait, htrait))
+        if not categorical:
+            mtrait = np.nanmedian(TraitValues)
+            ltrait = np.nanpercentile(TraitValues, 2.5)
+            htrait = np.nanpercentile(TraitValues, 97.5)
+            print("median trait value: {0:0.2f}, 2.5 - 97.5 percentiles: {1:0.2f} - {2:0.2f}".format(mtrait, ltrait, htrait))
+        else:
+            catcounts = {cat : len([x for x in TraitValues if x == cat]) for cat in Categories}
+            print("category histogram:")
+            for cat in Categories:
+                print(f"\t{cat}:\t{catcounts[cat]}")
         ## allele statistics
         print("total number of alleles:", np.sum([len(Alleles[locus]) for locus in loci]))
         for locus in sorted(Alleles.keys()):
@@ -153,48 +170,12 @@ def importSubjectData(fileName, traitFieldName, alleleFieldNames, subset=None,
     dataDict = {
         "TraitValues" : TraitValues,
         "CensCodes" : CensCodes,
-        "CensBounds" : CensBounds,
         "AlleleVecs" : AlleleVecs,
         "Alleles" : Alleles
     }
+    ## include censoring bounds if the trait value is a real number
+    if not categorical:
+        dataDict.update({"CensBounds" : CensBounds})
+    else:
+        dataDict.update({"Categories" : Categories})
     return dataDict
-
-def importBinarySubjectData(fileName): ## "hcv/subjects_resolved_nmp_all.tsv"
-    """
-    input: name of the tsv file with patient HLA and health status data
-    output:
-    - patientStatus -- the health status
-    - StatusCensCodes -- censoring codes for health status
-    - patientAlleleVecs -- admissible HLA alleles
-    - hlaAlleles -- the HLA alleles in the dataset, in the right order
-
-    FIXME: repair this function and the input file
-    """
-    data, header = aux.basicTsvImport(fileName, has_header=True)
-    dataDicts = [dict(list(zip(header, row))) for row in data]
-
-    ## get all HLA alleles in the data set.
-    hlaKeys = dict((X, ["HLA_{}{}_resolved".format(X,i) for i in [1,2]]) for X in "ABC")
-
-    hlaAlleles = {}
-    for X in "ABC":
-        alleles = [row[hlaKeys[X][i]].split(';') for i in range(2) for row in dataDicts]
-        alleles = aux.unique(aux.flatten(alleles))
-        hlaAlleles[X] = [mhctools.MhcObject(a) for a in alleles]
-
-    ## for each patient, make a vector with zeroes and ones
-    ## indicating whether the allele is present
-    def hasAllele(p, hla, X, i):
-        admissibles = [mhctools.MhcObject(a) for a in p[hlaKeys[X][i]].split(';')]
-        return hla in admissibles ## "in" uses the __eq__ class method to determine equality
-
-    patientAlleleVecs = {}
-    for X in "ABC":
-        patientAlleleVecs[X] = [[[hasAllele(p, h, X, i)
-            for h in hlaAlleles[X]] for i in range(2)] for p in dataDicts]
-
-    ## get the health status
-    patientHealthStatuss = np.array([int(row["HCV_clr"]) for row in dataDicts]) ## TODO/FIXME: make this generic
-
-    ## return relevant data
-    return (patientHealthStatuss, patientAlleleVecs, hlaAlleles)
