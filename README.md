@@ -102,12 +102,13 @@ following data:
 The most important file provided by the user contains the subject data. The file name must be given in the `json` meta-data file at the key `"subjectFileName"`. the subject file should be in the
 `tsv` of `csv` format and each row should contain data for one
 subject. Typically, the trait value of interest (e.g. viral load, or infection status), and HLA alleles at
-a number of loci. The user also can provide censoring
+a number of loci. The user also can provide optional censoring
 information about the trait value. In the `json` file the column
 name in the header of the subject file must be given at key
 `"traitFieldName"`. If the trait field name is `X`,
 then the censoring information should be given in a column with
-name `X_censoring`.
+name `X_censoring`. If no such column exists, all values are
+assumed to be uncensored.
 
 #### Censoring codes
 
@@ -122,7 +123,17 @@ For categorical data, only the codes `uncensored` and `missing` are allowed.
 #### Admissible MHC alleles
 
 The subject file should contain columns for HLA alleles. The user
-can provide alleles at various loci (A, B, C), with two alleles per locus. The names of the fields in the subject data file should be given at the `"alleleFieldNames"` key, as indicated in the example above.
+can provide alleles at various loci (e.g. A, B, C), with two alleles per locus.
+The names of the fields in the subject data file should be given at the `"alleleFieldNames"` key,
+as indicated in the example above.
+In order to only use a single locus (e.g. B) as predictor, leave out any other allele field names
+in the `json` file. For instance:
+
+```python
+"alleleFieldNames" : { ## the field names of the MHC loci in the subject file
+  "B" : ["HLA_B1", "HLA_B2"]
+}
+```
 
 When the full 2 field type is not fully resolved (or an allele is completely missing), it is possible to enter multiple admissible alleles for one subject. These should be added in a single cell of the table, separated by semi-columns.
 
@@ -167,6 +178,6 @@ distribution instead, use the option `--prior dexp`.
 The default MHC similarity measure is based on pseudo-sequences, using the
 `PMBEC` amino-acid similarity matrix.
 To see if the tree model is better than the model with independent MHC alleles,
-we can use the trivial MHC similarity using the option `--mhc-similarity trivial`. To find out if there is any significant
-MHC association with the trait of interest, the user can run the
-null model by selecting the option `--model null`.
+we can use the trivial MHC similarity using the option `--mhc-similarity trivial`.
+To find out if there is any significant MHC association with the trait of interest,
+the user can run the null model by selecting the option `--model null`.

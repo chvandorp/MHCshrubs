@@ -76,6 +76,8 @@ def mkJagsDataFile(path, fileBaseName, pd, override):
                 datFileHandle.write(RdumpVector(p, data))
             elif len(data.shape) == 2: ## data is a matrix
                 datFileHandle.write(RdumpMatrix(p, data))
+            else:
+                raise Exception("n-dim array with n>2 not implemented")
     return datFileName
 
 def mkJagsParameterFile(path, fileBaseName, pd, chain, run, override):
@@ -215,24 +217,36 @@ def parseJagsOutput(path, fileBaseName):
     """
 
     name_re = re.compile("[a-zA-Z0-9_\.]*")
-    idx_re = re.compile("(?<=\[)[0-9]*(?=\])")
+    idx_re = re.compile("(?<=\[)[0-9,]*(?=\])")
     ## aux function for parsing parameter names and their index (for vectors)
     def getParNameAndIndex(pn):
         rn = name_re.search(pn)
         name = None if rn is None else rn.group()
         ri = idx_re.search(pn)
-        idx = None if ri is None else int(ri.group())
+        idx = None if ri is None else [int(i) for i in ri.group().split(',')]
         return (name, idx)
+    def getKey(pn, idx):
+        return f"{pn}[{','.join([str(i) for i in idx])}]"
     ## aux function for collecting all elements of a parameter vector
     def sortTraces(pn, rawchain):
-        indices = [getParNameAndIndex(key) for key in list(rawchain.keys())]
+        indices = [getParNameAndIndex(key) for key in rawchain.keys()]
         indices = sorted([snd(x) for x in indices if fst(x) == pn])
-        if len(indices) > 1:
-            traces = [rawchain[pn + "[{}]".format(idx)] for idx in indices]
-            return transpose(convertToNumeric(traces))
-        else:
+        if indices[0] is None: ## scalar
             trace = rawchain[pn]
             return convertToNumeric(trace)
+        elif len(indices[0]) == 1: ## 1-d array
+            keys = [getKey(pn, idx) for idx in indices]
+            traces = [rawchain[k] for k in keys]
+            return transpose(convertToNumeric(traces))
+        elif len(indices[0]) == 2: ## 2-d array
+            n = np.max([idx[0] for idx in indices])
+            m = np.max([idx[1] for idx in indices])
+            traces = [[rawchain[getKey(pn, [i+1,j+1])] for j in range(m)] for i in range(n)]
+            return np.array(convertToNumeric(traces)).transpose((2,0,1)).tolist()
+        else:
+            ## @todo: implement general method for n-d arrays!!
+            raise Exception("n-dimensional arrays not implemented")
+
     ## actual function starts here...
     sams = [] ## return value (one dict for each chain)
     ## index file

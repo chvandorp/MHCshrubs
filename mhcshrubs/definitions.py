@@ -21,14 +21,16 @@ locusColorDict = {
 
 ## translate parameters in JAGS to symbols used in the manuscript
 symbolDict = {
-    'alpha' : "$\\mu_{\\rm spvl}$",
+    'alpha' : "$\\mu$",
     'betaNodes' : "$\\alpha$",
+    'beta' : "$\\beta$",
     'betaA' : "$\\beta_A$",
     'betaB' : "$\\beta_B$",
     'betaC' : "$\\beta_C$",
     'pA' : "$p_A$",
     'pB' : "$p_B$",
     'pC' : "$p_C$",
+    'p' : "$p$",
     'tau_V' : "$\\tau_{\\rm spvl}$",
     'tau_beta' : "$\\tau_{\\rm branch}$",
     'eta' : "$\\eta$"

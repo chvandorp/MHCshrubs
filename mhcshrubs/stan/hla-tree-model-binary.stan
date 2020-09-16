@@ -90,8 +90,6 @@ transformed data {
   int<lower=1> AdmAlleleIdxCombs[count_combs(NumAdmAlleles), Ploidy, NumLoci]; // alleleFreqs, alleleWeights
   int<lower=1> AdmAlleleProbIdxCombs[count_combs(NumAdmAlleles), Ploidy, NumLoci]; // admAlleleProbs
   int NumUncensoredTraitValues;
-  int NumOnes; // number of TraitValues equals to 1
-  real BaselineLogOdds; // logit(f/(1-f)) where f = fraction of 1s
   real<lower=0> WatanabeBeta; // determines sampling temperature: 1/log(N), where N is the number of observations
 
   // define integer constants
@@ -157,22 +155,12 @@ transformed data {
     } // loop over ploidy
   } // loop over subjects
 
+  // count the number of uncensored trait values
   NumUncensoredTraitValues = 0;
-  NumOnes = 0;
-
   for ( s in 1:NumSubjects ) {
     if ( TraitCensorType[s] == 0 ) {
       NumUncensoredTraitValues += 1;
-      if ( TraitValue[s] == 1 ) {
-        NumOnes += 1;
-      }
     }
-  }
-  if ( NumOnes > 0 && NumOnes < NumUncensoredTraitValues ) {
-    BaseLineLogOdds = logit(NumOnes * inv(NumUncensoredTraitValues));
-  } else {
-    print("INFO: all trait values are either 0 or 1. Setting baseline odds to 1");
-    BaseLineLogOdds = 0.0;
   }
 
   // determine the sampling temperature
@@ -190,6 +178,7 @@ parameters {
   vector<lower=0>[SumNumAdmAlleles-NumSubjects*Ploidy*NumLoci] admAlleleProbParams; // must be transformed to get likelihood
   real<lower=0> sigmaNodeWeight; // hypo-parameter
   vector[NumNodes] nodeWeights; // must be transformed to make allele weights
+  real baseLineLogOdds; // should be close to log(frac ones / frac zeros )
 }
 
 transformed parameters {
@@ -228,11 +217,11 @@ transformed parameters {
 
     int sl = LeftAdmAlleleCombBnds[s]; int sr = RightAdmAlleleCombBnds[s];
     for ( sc in sl:sr ) {
-      real sum_allele_weights sum_allele_weights = sum(alleleWeights[to_array_1d(AdmAlleleIdxCombs[sc,:,:])]);
+      real sum_allele_weights = sum(alleleWeights[to_array_1d(AdmAlleleIdxCombs[sc,:,:])]);
       logprobs[sc-sl+1] = log(prod(admAlleleProbs[to_array_1d(AdmAlleleProbIdxCombs[sc,:,:])]));
 
       if ( TraitCensorType[s] == 0 ) { // uncensored
-        loglikes[sc-sl+1] = bernoulli_logit_lpmf(TraitValue[s] | sum_allele_weights + BaseLineLogOdds);
+        loglikes[sc-sl+1] = bernoulli_logit_lpmf(TraitValue[s] | sum_allele_weights + baseLineLogOdds);
       } else if ( TraitCensorType[s] == 3 ) { // missing
         loglikes[sc-sl+1] = 0.0;
       } else { // left or right censoring codes are invalid
@@ -280,13 +269,16 @@ model {
     print("ERROR: invalid NodeWeight prior");
   }
 
-  // prior for mean and sd TraitValue
-  sigmaTraitValue ~ normal(0.0, 10.0); // sigma is restricted to be positive
+  // prior for baseline logodds of the outcome
+  baseLineLogOdds ~ normal(0.0, 10.0);
 
   // add loglikes for the TraitValue to the target
   target += WatanabeBeta * sum(traitValueLoglikes);
 }
 
 generated quantities {
+  // for consistency with the continous model, export "rescaled" weights
+  vector[NumNodes] rescaledNodeWeights = nodeWeights;
+  vector[SumNumAlleles] rescaledAlleleWeights = alleleWeights;
   real sumTraitValueLoglikes = sum(traitValueLoglikes); // for WBIC computation
 }

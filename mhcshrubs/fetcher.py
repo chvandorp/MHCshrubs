@@ -30,7 +30,8 @@ def importAlleleFrequencyData(fileName): ## "mhc-top0.99counts-ncbi-Sub-Saharan-
     return countDict
 
 
-def importSubjectData(fileName, traitFieldName, alleleFieldNames, subset=None,
+def importSubjectData(fileName, traitFieldName, alleleFieldNames,
+                      traitCensFieldName=None, subset=None,
                       verbose=False, traitTransform=(lambda x: x), categorical=False):
     """
     Import MHC data and continuous disease traits.
@@ -38,12 +39,16 @@ def importSubjectData(fileName, traitFieldName, alleleFieldNames, subset=None,
     Args:
         fileName (str): name of the tsv/csv file with allele and trait data
             per subject
-        TraitFieldName (str): the name of the trait of interest in the header
+        traitFieldName (str): the name of the trait of interest in the header
             of the tsv file
         alleleFieldNames (dict): a dictionary with the field names for the
             alleles.
 
     Kwargs:
+        traitCensFieldName (str or bool): title of the column with censoring values.
+            If False, all data is assumed to be uncensored.
+            If True (default) the key is assumed to be X_censoring,
+            where X is the traitFieldName.
         subset (int): take a sample from the complete data.
             If None (default), use all data.
         verbose (bool): print some basic statistics on the imported data.
@@ -74,6 +79,9 @@ def importSubjectData(fileName, traitFieldName, alleleFieldNames, subset=None,
         delim = ','
     elif file_extension == ".tsv":
         delim = '\t'
+    elif file_extension == ".xlsx":
+        ## @todo: implement excel files
+        raise Exception("xlsx file format not yet implemented")
     else:
         raise Exception("invalid file format (csv or tsv expected)")
     ## read the contents of the file
@@ -113,11 +121,19 @@ def importSubjectData(fileName, traitFieldName, alleleFieldNames, subset=None,
                              for subject in data]
 
     ## get the trait values and censoring information
-    traitCensFieldName = "{0}_censoring".format(traitFieldName)
-    CensCodes = np.array([subject[traitCensFieldName]
-                          if traitCensFieldName in subject.keys()
-                          else defn.uncensored_code ## FIXME, make sure that this is consistant
-                          for subject in data])
+    if type(traitCensFieldName) is bool and traitCensFieldName == True:
+        ## use the default key, based on the traitFieldName
+        traitCensFieldName = "{0}_censoring".format(traitFieldName)
+    ## now, get censoring from data set if traitCensFieldName is str
+    if type(traitCensFieldName) is str:
+        CensCodes = np.array([subject[traitCensFieldName]
+                              if traitCensFieldName in subject.keys()
+                              else defn.uncensored_code ## FIXME, make sure that this is consistant
+                              for subject in data])
+    else: ## assume everything is uncensored
+        CensCodes = np.array([defn.uncensored_code for _ in data])
+
+    ## get trait values
     if not categorical:
         TraitValues = np.array([traitTransform(float(subject[traitFieldName]))
                                 if cens_code == defn.uncensored_code
@@ -155,7 +171,7 @@ def importSubjectData(fileName, traitFieldName, alleleFieldNames, subset=None,
         ## allele statistics
         print("total number of alleles:", np.sum([len(Alleles[locus]) for locus in loci]))
         for locus in sorted(Alleles.keys()):
-            print("number of {0} alleles: {1}".format(locus, len(Alleles[locus])))
+            print(f"number of {locus} alleles: {len(Alleles[locus])}")
         numCompleteHaplotypes = 0
         for idx in range(len(data)):
             compl = [sum(1 for x in alleleVec if x) == 1

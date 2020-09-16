@@ -287,14 +287,19 @@ def funFitTree(subjectFileName, hlaFileName, pSeqFileName, aaCovFileName, summar
                                                     verbose=True, dry_run=dry_run, use_cache=use_cache,
                                                     prior=prior, multiplicity=multiplicity, hetr_adv=hetr_adv, parallel=parallel)
             else:
-                result = fittrees.fitTreeWeights(dataDict, parDict, hlaFileName, newick_str_pseq,
+                ## FIXME: implement fitTreeWeights for general loci
+                result = fittrees.fitTreeWeightsABC(dataDict, parDict, hlaFileName, newick_str_pseq,
                                                  represDict=represDict, chain_len=chain_len,
                                                  chain_thin=chain_thin, num_chains=num_chains, modelName=name_base,
                                                  verbose=True, dry_run=dry_run, use_cache=use_cache,
                                                  prior=prior, multiplicity=multiplicity, hetr_adv=hetr_adv, parallel=parallel)
         elif sampler == "stan":
             if categorical:
-                raise Exception("categorical Stan sampler not implemented")
+                result = fittrees.fitTreeWeightsStanCat(dataDict, parDict, hlaFileName, newick_str_pseq,
+                                                        represDict=represDict, chain_len=chain_len,
+                                                        chain_thin=chain_thin, num_chains=num_chains, modelName=name_base,
+                                                        verbose=True, dry_run=dry_run, use_cache=use_cache,
+                                                        prior=prior, multiplicity=multiplicity, hetr_adv=hetr_adv, wbic_sampling=False)
             else:
                 result = fittrees.fitTreeWeightsStan(dataDict, parDict, hlaFileName, newick_str_pseq,
                                                      represDict=represDict, chain_len=chain_len,
@@ -337,7 +342,8 @@ def funFitKirTree(subjectFileName, hlaFileName, aaCovFileName, summaryFileName, 
                                                             aaDistDict=aaDistDict, verbose=True)
 
     ## run the model
-    result = fittrees.fitTreeWeights(dataDict, parDict, hlaFileName, newick_str_kir,
+    ## FIXME: implement fitTreeWeight for general loci
+    result = fittrees.fitTreeWeightsABC(dataDict, parDict, hlaFileName, newick_str_kir,
                                      represDict=represDict, chain_len=chain_len, chain_thin=chain_thin,
                                      num_chains=num_chains, modelName=name_base,
                                      verbose=True, dry_run=dry_run, use_cache=use_cache,
@@ -364,7 +370,8 @@ def funFitBindingTree(subjectFileName, hlaFileName, fastaFileName, summaryFileNa
                                            verbose=True, dry_run=dry_run, parallel=parallel,
                                            use_cache=use_cache, cache_dir=cache_dir)
     ## run the model
-    result = fittrees.fitTreeWeights(dataDict, parDict, hlaFileName, newick_str_bind,
+    ## FIXME: implement fitTreeWeights for general loci
+    result = fittrees.fitTreeWeightsABC(dataDict, parDict, hlaFileName, newick_str_bind,
                                      represDict=represDict, chain_len=chain_len,
                                      chain_thin=chain_thin, num_chains=num_chains,
                                      modelName=name_base, verbose=True, dry_run=dry_run,

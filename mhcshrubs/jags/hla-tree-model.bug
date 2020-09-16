@@ -1,20 +1,38 @@
 ## JAGS model -- baseline hla-tree-model
+##
+## Model for continuous traits.
+## This model can handle an arbitrary number of loci.
+##
+## We accomplish this by concatenating the HLA frequency
+## distributions e.g. p = (p_A, p_B, p_C).
+## We then have to recover the right slice of this vector
+## for inference of missing HLA alleles and HLA frequencies.
+## The c-vectors with admissible HLAs are also concatenated,
+## in addition to the vector beta of allele weights.
 
 data {
-    ## transformed data (NB: in JAGS, nodes can only be defined once in the model block)
+    ## infer number of loci from length of H
+    L <- length(H)
+
+    ## auxiliary vector: H with a zero in front: required for Lidx definition
+    ZH <- c(0,H)
+    ## compute indices to select array slices corresponding to loci
+    for ( ell in 1:length(H) ) { ## NB: unable to use L here for some reason
+        Lidx[ell] <- sum(ZH[1:ell]) + 1 ## left-index for locus ell in concat vectors
+        Ridx[ell] <- sum(H[1:ell]) ## right-index for locus ell in concat vectors
+    }
+
+    ## one1 and one2 are used to account for subject's HLAs when the HLA freqs are estimated
+    ## (NB: in JAGS, nodes can only be defined once in the model block)
     for ( i in 1:N ) {
-        oneA1[i] <- 1
-        oneA2[i] <- 1
-        oneB1[i] <- 1
-        oneB2[i] <- 1
-        oneC1[i] <- 1
-        oneC2[i] <- 1
+      for ( ell in 1:length(H) ) { ## NB: unable to use L here for some reason
+        one1[i, ell] <- 1
+        one2[i, ell] <- 1
+      }
     }
 
     ## uninformed Dirichlet distribution...
-    for ( h in 1:HA ) { halvesA[h] <- 0.5 }
-    for ( h in 1:HB ) { halvesB[h] <- 0.5 }
-    for ( h in 1:HC ) { halvesC[h] <- 0.5 }
+    for ( h in 1:sum(H) ) { halves[h] <- 0.5 }
 
     ## precision for priors
     precision <- 1.0E-3
@@ -24,36 +42,36 @@ model {
     ## loop over the N patients
     for ( i in 1:N ) {
         log_like[i] <- log(dnorm(V[i], W[i], tau_V)) ## used for WAIC
-        ## likelihood of virus loads V, given a "predicted virus load W"
+        ## likelihood of trait value V, given a "predicted trait value W"
         V[i] ~ dnorm(W[i], tau_V)
         intervalCensorValue[i] ~ dinterval(V[i], VLbound[i])
-        ## the predicted virus load is determined by the weights (beta) of the HLA alleles
-        ## each patient has 3 times 2 alleles
-        hlaEffect[i] <- betaA[hlaA1[i]] + betaA[hlaA2[i]] +
-                        betaB[hlaB1[i]] + betaB[hlaB2[i]] +
-                        betaC[hlaC1[i]] + betaC[hlaC2[i]]
+        ## the predicted trait value is determined by the weights (beta) of the HLA alleles
+        ## each participant has 2 alleles
+        for ( ell in 1:L ) {
+          betaSubject1[i, ell] <- beta[Lidx[ell]+hla1[i, ell]-1]
+          betaSubject2[i, ell] <- beta[Lidx[ell]+hla2[i, ell]-1]
+        }
+        hlaEffect[i] <- sum(betaSubject1[i,]) + sum(betaSubject2[i,])
         W[i] <- alpha + hlaEffect[i] - meanHlaEffect ## TODO: covariates
 
-        ## missing HLA data. The vectors cA1[,i], ..., cC2[,i] restrict the possible
+        ## missing HLA data. The vectors c1[,i], c2[,i] restrict the possible
         ## alleles for patient i. If the 4-digit allele is fully known, only one
         ## element of the vector is 1, otherwise, the vector contains multiple 1s
-        hlaA1[i] ~ dcat(cA1[,i])
-        hlaA2[i] ~ dcat(cA2[,i])
-        hlaB1[i] ~ dcat(cB1[,i])
-        hlaB2[i] ~ dcat(cB2[,i])
-        hlaC1[i] ~ dcat(cC1[,i])
-        hlaC2[i] ~ dcat(cC2[,i])
+        for ( ell in 1:L ) {
+          hla1[i, ell] ~ dcat(c1[Lidx[ell]:Ridx[ell], i])
+          hla2[i, ell] ~ dcat(c2[Lidx[ell]:Ridx[ell], i])
+        }
 
-        ## likelihood of HLA distribution. Each patient contributes to the likelihood
-        ## of the HLA distributions pA, pB and pC.
-        oneA1[i] ~ dbern(pA[hlaA1[i]]) ## oneA1 is mock "data" and always 1
-        oneA2[i] ~ dbern(pA[hlaA2[i]])
-        oneB1[i] ~ dbern(pB[hlaB1[i]])
-        oneB2[i] ~ dbern(pB[hlaB2[i]])
-        oneC1[i] ~ dbern(pC[hlaC1[i]])
-        oneC2[i] ~ dbern(pC[hlaC2[i]])
+        ## likelihood of HLA distribution. Each participant contributes to the
+        ## likelihood of the HLA distributions p
+        for ( ell in 1:L ) {
+          ## select the right slice of the p-vector, then get the right element
+          one1[i, ell] ~ dbern(p[Lidx[ell]+hla1[i, ell]-1])
+          one2[i, ell] ~ dbern(p[Lidx[ell]+hla2[i, ell]-1])
+          ## one1 is mock "data" and always 1
+        }
     }
-    ## subtract "meanHlaEffect" from W[i]'s to de-correlate alpha with betas
+    ## subtract "meanHlaEffect" from logit(Q[i])'s to de-correlate alpha with betas
     ## and get better precision for both.
     meanHlaEffect <- mean(hlaEffect)
 
@@ -61,20 +79,20 @@ model {
     tau_V ~ dgamma(precision, precision)
 
     ## HLA frequency distribution
-    pA ~ ddirch(halvesA)
-    pB ~ ddirch(halvesB)
-    pC ~ ddirch(halvesC)
+    for ( ell in 1:L ) {
+      p[Lidx[ell]:Ridx[ell]] ~ ddirch(halves[Lidx[ell]:Ridx[ell]])
+    }
 
     ## additional data to inform the frequency distributions.
     ## We use allele counts mA, mB and mC from Sub-Saharan Africa (SSA)
     ## to better estimate the Allele frequencies. NB: some alleles
     ## in the Durban cohort, have 0 frequency in the SSA sample. Therefore,
     ## we cannot use the SSA frequencies directly.
-    mA ~ dmulti(pA, MA)
-    mB ~ dmulti(pB, MB)
-    mC ~ dmulti(pC, MC)
+    for ( ell in 1:L ) {
+      m[Lidx[ell]:Ridx[ell]] ~ dmulti(p[Lidx[ell]:Ridx[ell]], M[ell])
+    }
 
-    ## prior of the HLA effects. The intercept of the virus load model
+    ## prior of the HLA effects. The baseline log-odds of the outcome
     alpha ~ dnorm(0.0, precision)
 
     ## prior on the weights of the nodes. The vector betaNodes contains
@@ -85,18 +103,12 @@ model {
     ## precision of the node weight distribution
     tau_beta ~ dgamma(precision, precision)
 
-    ## construct the leafs (betaA, betaB, betaC) using NodeMatrices.
-    ## the elements of e.g. the vector NodeMatrixA1[,h] are 0 if
+    ## construct the leafs (beta) using NodeMatrix.
+    ## the elements of e.g. the vector NodeMatrix[,h] are 0 if
     ## the node is in the path from the root to the leaf of the HLA allele h,
     ## and 0 otherwise
-    for ( h in 1:HA ) {
-        betaA[h] <- inprod(NodeMatrixA[,h], lengthsEdgeToParent * betaNodes)
-    }
-    for ( h in 1:HB ) {
-        betaB[h] <- inprod(NodeMatrixB[,h], lengthsEdgeToParent * betaNodes)
-    }
-    for ( h in 1:HC ) {
-        betaC[h] <- inprod(NodeMatrixC[,h], lengthsEdgeToParent * betaNodes)
+    for ( h in 1:sum(H) ) {
+        beta[h] <- inprod(NodeMatrix[,h], lengthsEdgeToParent * betaNodes)
     }
 
     ## compute R^2 of the model. See the paper
