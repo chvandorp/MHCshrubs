@@ -52,7 +52,9 @@ model {
           betaSubject2[i, ell] <- beta[Lidx[ell]+hla2[i, ell]-1]
         }
         hlaEffect[i] <- sum(betaSubject1[i,]) + sum(betaSubject2[i,])
-        Q[i] <- ilogit(alpha + hlaEffect[i] - meanHlaEffect)
+
+        ## NB: Covariates should be standardized
+        Q[i] <- ilogit(alpha + hlaEffect[i] - meanHlaEffect + inprod(theta, Covariates[i,]))
 
         ## missing HLA data. The vectors c1[,i], c2[,i] restrict the possible
         ## alleles for patient i. If the 4-digit allele is fully known, only one
@@ -95,17 +97,22 @@ model {
     ## prior on the weights of the nodes. The vector betaNodes contains
     ## the weights of the nodes of the HLA tree
     for ( k in 1:K ) {
-        betaNodes[k] ~ dnorm(0.0, tau_beta)
+      betaNodes[k] ~ dnorm(0.0, tau_beta)
     }
     ## precision of the node weight distribution
     tau_beta ~ dgamma(precision, precision)
+
+    ## prior on covariates
+    for ( u in 1:U ) {
+      theta[u] ~ dnorm(0.0, precision)
+    }
 
     ## construct the leafs (beta) using NodeMatrix.
     ## the elements of e.g. the vector NodeMatrix[,h] are 0 if
     ## the node is in the path from the root to the leaf of the HLA allele h,
     ## and 0 otherwise
     for ( h in 1:sum(H) ) {
-        beta[h] <- inprod(NodeMatrix[,h], lengthsEdgeToParent * betaNodes)
+      beta[h] <- inprod(NodeMatrix[,h], lengthsEdgeToParent * betaNodes)
     }
 
     ## compute R^2 of the model. See the paper

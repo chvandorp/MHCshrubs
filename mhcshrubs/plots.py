@@ -94,3 +94,11 @@ def mkAlleleFreqPlots(filename, chain, hlaAlleles, hlaCounts):
     axs[-1].set_xlabel("allele")
     fig.tight_layout()
     fig.savefig(filename, dpi=300, bbox_inches="tight")
+
+def mkCovariateWeightPlot(filename, chain, covariateNames):
+    fig, ax = plt.subplots(1, 1, figsize=(7, 5))
+    theta = chain["theta"]
+    ax.violinplot(theta, showmeans=False, showextrema=False, showmedians=False)
+    ax.set_xticks(range(1, len(covariateNames)+1))
+    ax.set_xticklabels(covariateNames, rotation=90)
+    fig.savefig(filename, dpi=300, bbox_inches="tight")

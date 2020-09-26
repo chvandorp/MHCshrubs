@@ -134,6 +134,36 @@ def mkAdmissibilityLists(patientAlleleVecs):
     return alleleLists
 
 
+def standardizeCovariateDict(covariateDict):
+    """
+    Apply the standardize methods from the statistics module to all covariates
+    in the dictionary.
+    """
+    covariateZDict = {}
+    for k, v in covariateDict.items():
+        zs, zbs = statistics.standardize(v["Values"], v["CensCodes"], v["CensBounds"])
+        covariateZDict[k] = {
+            "Values" : zs,
+            "CensCodes" : v["CensCodes"],
+            "CensBounds" : zbs
+        }
+    return covariateZDict
+
+def mkCovariateMatrix(covariateDict):
+    """
+    A covariateDict is a dictionary indexed by the covariate names.
+    Each value is a dict with keys 'Values', 'CensCodes' and 'CensBounds'
+    First, the covariates are standardized.
+    """
+    covariateZDict = standardizeCovariateDict(covariateDict)
+    keys = sorted(list(covariateZDict.keys()))
+    Values = [covariateZDict[k]["Values"] for k in keys]
+    CensCodes = [[getJagsCensCode(cc) for cc in covariateZDict[k]["CensCodes"]] for k in keys]
+    CensBounds = [covariateZDict[k]["CensBounds"] for k in keys]
+    ## scale and center
+    return Values, CensCodes, CensBounds
+
+
 ## functions to retrieve data from the chain
 
 def getExpectedHlaCounts(chain, hlaAlleles, leaveOutPatientIdxs=[]):
@@ -360,7 +390,7 @@ def fitNullModel(dataDict, parDict, chain_len=1000, chain_thin=10, num_chains=4,
 
 def fitNullModelCat(dataDict, parDict, chain_len=1000, chain_thin=10, num_chains=4,
                     parallel=True, leaveOutAlleles=[], modelName="null",
-                    verbose=False, dry_run=False, use_cache=False):
+                    verbose=False, dry_run=False, use_cache=False, render_figures=True):
     """
     Fit the null model to categorical data.
 
@@ -400,6 +430,7 @@ def fitNullModelCat(dataDict, parDict, chain_len=1000, chain_thin=10, num_chains
     patientAlleleVecs = dataDict["AlleleVecs"]
     hlaAlleles = dataDict["Alleles"]
     loci = sorted(hlaAlleles.keys())
+    covariates = dataDict["Covariates"]
 
     leaveOutAlleleVec = {locus : [hla in leaveOutAlleles for hla in hlaAlleles[locus]] for locus in loci}
 
@@ -439,12 +470,27 @@ def fitNullModelCat(dataDict, parDict, chain_len=1000, chain_thin=10, num_chains
 
     parameters = ["alpha", "log_like", "Q", "R2"]
 
+    ## standardize the covariates
+    covNames = sorted(list(covariates.keys()))
+    U = len(covNames)
+    if U > 0:
+        covValues, covCensCodes, covCensBounds = mkCovariateMatrix(covariates)
+        ## TODO: implement censored covariates
+        dataDict.update({
+            "U" : U,
+            "Covariates" : covValues
+        })
+        parameters.append("theta")
+
     ## add a specifier to the model name to indicate left out alleles
     if len(leaveOutAlleles) > 0:
         modelName += "." + ".".join(hla.Newick_str() for hla in leaveOutAlleles)
 
     ## choose the right jags model
-    file_name = os.path.join(defn.ROOT_DIR, "jags", "null-model-binary.bug")
+    if U == 0: ## null model without covariates
+        file_name = os.path.join(defn.ROOT_DIR, "jags", "null-model-binary.bug")
+    else: ## use the model with covariates
+        file_name = os.path.join(defn.ROOT_DIR, "jags", "null-model-binary-covariate.bug")
 
     ## choose a working folder
     work_folder = os.getcwd()
@@ -478,6 +524,30 @@ def fitNullModelCat(dataDict, parDict, chain_len=1000, chain_thin=10, num_chains
         chain = {}
         WAIC = np.nan
         Rhat = {}
+
+    ## make some plots
+    if render_figures:
+        if aux.isXServerAvailable():
+            figFileNameTP = os.path.join(outputFolder, "figures",
+                f"trace-plots.{modelName}.png")
+            parametersTP = [
+                ("alpha", None), ## TODO translate parameter names
+            ]
+            if U > 0:
+                if U == 1:
+                    parametersTP.append(("theta", None))
+                else:
+                    parametersTP.append(("theta", np.random.randint(0,U)))
+            ## now use the mkTracePlot function
+            statistics.mkTracePlots(figFileNameTP, jm.sams, parametersTP, Rhat)
+            ## covariates
+            if U > 0:
+                figFileNameCovariates = os.path.join(outputFolder, "figures",
+                    f"covariate-weights.{modelName}.png")
+                plots.mkCovariateWeightPlot(figFileNameCovariates, chain, covNames)
+        elif verbose:
+            warnings.warn("no X-server avaliable. Trace plot not rendered.")
+
     ## return a dictionary
     rd = {
         "WAIC" : WAIC,
@@ -1195,6 +1265,7 @@ def fitTreeWeightsCat(dataDict, parDict, hlaFileName, hlaNewickString,
     patientAlleleVecs = dataDict["AlleleVecs"]
     hlaAlleles = dataDict["Alleles"]
     loci = sorted(hlaAlleles.keys())
+    covariates = dataDict["Covariates"]
 
     if hlaFileName is not None:
         hlaCountDict = fetcher.importAlleleFrequencyData(hlaFileName)
@@ -1292,6 +1363,17 @@ def fitTreeWeightsCat(dataDict, parDict, hlaFileName, hlaNewickString,
     if hetr_adv is not None:
         parameters += ["heterozygosity", "eta"]
 
+    ## standardize the covariates
+    covNames = sorted(list(covariates.keys()))
+    U = len(covNames)
+    if U > 0:
+        covValues, covCensCodes, covCensBounds = mkCovariateMatrix(covariates)
+        ## TODO: implement censored covariates
+        dataDict.update({
+            "U" : U,
+            "Covariates" : covValues
+        })
+        parameters.append("theta")
 
     ## add a specifier to the model name to indicate left out alleles
     if len(leaveOutAlleles) > 0:
@@ -1301,9 +1383,15 @@ def fitTreeWeightsCat(dataDict, parDict, hlaFileName, hlaNewickString,
     work_folder = os.getcwd()
     if multiplicity == "double":
         if prior == "norm":
-            file_name = os.path.join(defn.ROOT_DIR, "jags", "hla-tree-model-binary.bug")
+            if U == 0: ## model without covariates
+                file_name = os.path.join(defn.ROOT_DIR, "jags", "hla-tree-model-binary.bug")
+            else: ## use model with covariates
+                file_name = os.path.join(defn.ROOT_DIR, "jags", "hla-tree-model-binary-covariate.bug")
         elif prior == "dexp":
-            file_name = os.path.join(defn.ROOT_DIR, "jags", "dexp-hla-tree-model-binary.bug")
+            if U == 0: ## model without covariates
+                file_name = os.path.join(defn.ROOT_DIR, "jags", "dexp-hla-tree-model-binary.bug")
+            else: ## use model with covariates
+                file_name = os.path.join(defn.ROOT_DIR, "jags", "dexp-hla-tree-model-binary-covariate.bug")
         else:
             raise Exception("invalid prior distribution")
     else:
@@ -1411,9 +1499,15 @@ def fitTreeWeightsCat(dataDict, parDict, hlaFileName, hlaNewickString,
                 ("alpha", None), ## TODO translate parameter names
                 ("tau_beta", None),
                 ("betaNodes", np.random.randint(0, K)),
-                ("beta", np.random.randint(0, H[loci[0]])),
+                ("beta", np.random.randint(0, H[loci[0]])), ## TODO: more loci
                 ("p", np.random.randint(0, H[loci[0]])),
             ]
+            if U > 0:
+                if U == 1:
+                    parametersTP.append(("theta", None))
+                else:
+                    parametersTP.append(("theta", np.random.randint(0,U)))
+            ## now use the mkTracePlot function
             statistics.mkTracePlots(figFileNameTP, jm.sams, parametersTP, Rhat)
             ## allele weight plots
             figFileNameWeights = os.path.join(outputFolder, "figures",
@@ -1423,6 +1517,11 @@ def fitTreeWeightsCat(dataDict, parDict, hlaFileName, hlaNewickString,
             figFileNameFreqs = os.path.join(outputFolder, "figures",
                 f"freq-plots.{modelName}.png")
             plots.mkAlleleFreqPlots(figFileNameFreqs, chain, hlaAlleles, m)
+            ## covariates
+            if U > 0:
+                figFileNameCovariates = os.path.join(outputFolder, "figures",
+                    f"covariate-weights.{modelName}.png")
+                plots.mkCovariateWeightPlot(figFileNameCovariates, chain, covNames)
         elif verbose:
             warnings.warn("no X-server avaliable. Trace plot not rendered.")
     ## return results

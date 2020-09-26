@@ -29,8 +29,26 @@ def importAlleleFrequencyData(fileName): ## "mhc-top0.99counts-ncbi-Sub-Saharan-
     countDict = dict((mhctools.MhcObject(row[0]), int(row[1])) for row in table)
     return countDict
 
+def fetchContinuousValue(fieldName, censFieldName, data):
+    """
+    Extract values and censoring codes for field with name 'fieldName'
+    from data.
+    """
+    CensCodes = np.array([subject[censFieldName] if censFieldName in subject.keys()
+                          else defn.uncensored_code for subject in data])
+    CensBounds = np.array([float(subject[fieldName])
+                           if cens_code == defn.left_censored_code
+                           or cens_code == defn.right_censored_code
+                           else defn.auxiliaryLowerCensBound
+                           for cens_code, subject in zip(CensCodes, data)])
+    Values = np.array([float(subject[fieldName]) if cens_code == defn.uncensored_code
+                       else np.nan for cens_code, subject in zip(CensCodes, data)])
+    return Values, CensCodes, CensBounds
+
+
 
 def importSubjectData(fileName, traitFieldName, alleleFieldNames,
+                      covariateFieldNames=None,
                       traitCensFieldName=None, subset=None,
                       verbose=False, traitTransform=(lambda x: x), categorical=False):
     """
@@ -45,6 +63,8 @@ def importSubjectData(fileName, traitFieldName, alleleFieldNames,
             alleles.
 
     Kwargs:
+        covariateFieldNames (list of str): list with covariate names
+            to be imported from the data file.
         traitCensFieldName (str or bool): title of the column with censoring values.
             If False, all data is assumed to be uncensored.
             If True (default) the key is assumed to be X_censoring,
@@ -154,6 +174,21 @@ def importSubjectData(fileName, traitFieldName, alleleFieldNames,
     ## make a list of possible trait values
     Categories = aux.unique([x for x, c in zip(TraitValues, CensCodes)
                              if c == defn.uncensored_code])
+
+    ## import covariates
+    if covariateFieldNames is None:
+        covariateFieldNames = [] ## empty list
+    Covariates = {} ## dictionary indexed by covariate name, empty if no covariates
+    for cfn in covariateFieldNames:
+        ccfn = "{0}_censoring".format(cfn)
+        covVals, covCCs, covCBs = fetchContinuousValue(cfn, ccfn, data)
+        Covariates[cfn] = {
+            "Values" : covVals,
+            "CensCodes" : covCCs,
+            "CensBounds" : covCBs
+        }
+
+    ## do some printing...
     if verbose:
         ## number op subjects
         print("number of subjects: {0}".format(len(data)))
@@ -181,13 +216,22 @@ def importSubjectData(fileName, traitFieldName, alleleFieldNames,
                 ## subject has with 2-field typed haplotype
                 numCompleteHaplotypes += 1
         print("number of complete haplotypes: {0}".format(numCompleteHaplotypes))
+        ## Covariates
+        if len(covariateFieldNames) > 0:
+            print("covariate statistics:")
+        for cfn in covariateFieldNames:
+            mcov = np.nanmean(Covariates[cfn]["Values"])
+            lcov = np.nanpercentile(Covariates[cfn]["Values"], 2.5)
+            hcov = np.nanpercentile(Covariates[cfn]["Values"], 97.5)
+            print(f"\t'{cfn}' mean value: {mcov:0.2f}, 2.5 - 97.5 percentiles: {lcov:0.2f} - {hcov:0.2f}")
 
     ## return relevant data in a dictionary
     dataDict = {
         "TraitValues" : TraitValues,
         "CensCodes" : CensCodes,
         "AlleleVecs" : AlleleVecs,
-        "Alleles" : Alleles
+        "Alleles" : Alleles,
+        "Covariates" : Covariates
     }
     ## include censoring bounds if the trait value is a real number
     if not categorical:

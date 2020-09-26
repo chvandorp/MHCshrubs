@@ -6,6 +6,22 @@ import matplotlib.pyplot as plt
 from mhcshrubs import definitions as defn
 import mhcshrubs.auxiliary as aux
 
+
+def standardize(xs, cs, bs):
+    """
+    Center and scale xs. Use only uncensored values, scale the censor bounds
+    for left and right censored values.
+    """
+    uxs = [x for x, c in zip(xs, cs) if c == defn.uncensored_code]
+    m, s = np.mean(uxs), np.std(uxs)
+    if s == 0:
+        print("WARNING: unable to scale value, standard deviation is zero")
+        s = 1 ## don't scale...
+    zs = [(x-m)/s if c == defn.uncensored_code else x for x, c in zip(xs, cs)]
+    lrccs = [defn.left_censored_code, defn.right_censored_code]
+    bzs = [(b-m)/s if c in lrccs else b for b, c in zip(bs, cs)]
+    return zs, bzs
+
 def CImeanBootstrap(xs, mass=0.95, B=1000):
     N = len(xs)
     ms = [np.mean(np.random.choice(xs, size=N)) for _ in range(B)]
@@ -84,6 +100,7 @@ def calcGelmanRubinRhat(chains, parname):
 def mkTracePlot(ax, chains, parname, symbol=None, idx=0):
     """
     make a trace plot of a parameter, using multiple chains.
+    @todo: move to module plots...
 
     Args:
         ax: pyplot object
@@ -124,6 +141,7 @@ def mkTracePlot(ax, chains, parname, symbol=None, idx=0):
 def mkTracePlots(filename, chains, parnames, Rhat={}, cols=3):
     """
     make a number of trace plots and render a figure.
+    @todo: move to module plots
 
     Args:
         filename (str): the path to the figure
@@ -143,6 +161,8 @@ def mkTracePlots(filename, chains, parnames, Rhat={}, cols=3):
     rem = len(parnames) % cols
     rows = len(parnames) // cols + (0 if rem == 0 else 1)
     fig, axs = plt.subplots(rows, cols, figsize=(15,3*rows))
+    if rows == 1: ## Fix indexing quirk
+        axs = np.array([axs])
     for i, pn in enumerate(parnames):
         col = i % cols
         row = i // cols

@@ -262,7 +262,12 @@ def funFitTree(subjectFileName, hlaFileName, pSeqFileName, aaCovFileName, summar
         raise Exception(f"invalid traitType '{traitType}' in json file")
     traitTransform = (lambda x: x) if categorical else np.log10 ## FIXME!!
     alleleFieldNames = parDict["alleleFieldNames"]
+    if "covariateFieldNames" in parDict.keys():
+        covariateFieldNames = parDict["covariateFieldNames"]
+    else:
+        covariateFieldNames = [] ## empty list of covariates
     dataDict = fetcher.importSubjectData(subjectFileName, traitFieldName, alleleFieldNames,
+                                         covariateFieldNames=covariateFieldNames,
                                          verbose=True, traitTransform=traitTransform,
                                          categorical=categorical)
     hlaAlleles = dataDict["Alleles"]
@@ -498,9 +503,15 @@ def funFitNull(subjectFileName, summaryFileName, parDict,
     traitTransform = (lambda x: x) if categorical else np.log10 ## FIXME!!
     ## get alleles field names (TODO: implement this in the null models)
     alleleFieldNames = parDict["alleleFieldNames"]
+
+    if "covariateFieldNames" in parDict.keys():
+        covariateFieldNames = parDict["covariateFieldNames"]
+    else:
+        covariateFieldNames = [] ## empty list of covariates
     dataDict = fetcher.importSubjectData(subjectFileName, traitFieldName,
                                          alleleFieldNames, verbose=True,
                                          traitTransform=traitTransform,
+                                         covariateFieldNames=covariateFieldNames,
                                          categorical=categorical)
     ## the null model does not require any HLA data
     if categorical:

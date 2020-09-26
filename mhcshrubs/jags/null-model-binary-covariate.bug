@@ -1,0 +1,30 @@
+## JAGS model
+
+data {
+    ## precision for priors
+    precision <- 1.0E-3
+}
+
+model {
+    ## loop over the N patients
+    for ( i in 1:N ) {
+        log_like[i] <- log(dbin(Y[i], Q[i], 1)) ## used for WAIC
+        ## likelihood of outcome Y, given probability Q
+        ## NB: Covariates should be standardized
+        Q[i] <- ilogit(alpha + inprod(theta, Covariates[i,]))
+        Y[i] ~ dbern(Q[i])
+    }
+    ## precision of V given the prediction W
+    ## mean VL (the predictor in the NULL model
+    alpha ~ dnorm(0.0, precision)
+
+    ## prior on covariates
+    for ( u in 1:U ) {
+      theta[u] ~ dnorm(0.0, precision)
+    }
+
+    ## compute R^2 of the model. See the paper
+    ## Gelman et al., R-squared for Bayesian regression models, 2017
+    ## FIXME: using the covariates, we can have an R-squared
+    R2 <- 0.0 ## for the null model, the R-squared is always 0
+}
