@@ -139,16 +139,29 @@ When the full 2 field type is not fully resolved (or an allele is completely mis
 
 #### Covariates
 
-<b> /!\ TODO /!\ </b>
+If you want to include covariates in the regression, these have to
+be present in the subject data file, and have to be specified in the
+`.json` metadata file. For instance, if we have a continuous covariate `age` and a binary covariate `male_sex`, then we add a list to the metadata with key `covariates`
+
+```python
+{
+  "id" : "DurbanHIV1",
+  ## other items as in example.json
+  ## ...
+  "covariates" : ["age", "male_sex"] ## covariates included in the regression
+}
+```
+
+Missing values are currently not supported, and covariates are only implemented for the categorical trait models. Only real values are allowed (but notice that this includes binary covariates, which must be encoded as 0 and 1). **/!\ TODO /!\**
 
 #### Example
 
 Here's a small example of a possible subject data table.
 
-| `ID`    | `VL`       | `VL_censoring` | `HLA_A1`      | `HLA_A2` | ... |
-|---------|------------|----------------|---------------|----------|-----|
-| `1003M` | `286000.0` | `uncensored`   | `HLA-A*02:01` | `HLA-A*29:01;HLA-A*29:02;HLA-A*29:03` | ... |
-| `1097M` | `200`      | `left_censored`| `HLA-A*30:02` | `HLA-A*33:01;HLA-A*33:03` | ... |
+| `ID`    | `age` | `VL`       | `VL_censoring` | `HLA_A1`      | `HLA_A2` | ... |
+|---------|-----|------------|----------------|---------------|----------|-----|
+| `1003M` | `32`  | `286000.0` | `uncensored`   | `HLA-A*02:01` | `HLA-A*29:01;HLA-A*29:02;HLA-A*29:03` | ... |
+| `1097M` | `53`  | `200`      | `left_censored`| `HLA-A*30:02` | `HLA-A*33:01;HLA-A*33:03` | ... |
 
 ## Command-line tool
 
