@@ -141,14 +141,14 @@ When the full 2 field type is not fully resolved (or an allele is completely mis
 
 If you want to include covariates in the regression, these have to
 be present in the subject data file, and have to be specified in the
-`.json` metadata file. For instance, if we have a continuous covariate `age` and a binary covariate `male_sex`, then we add a list to the metadata with key `covariates`
+`.json` metadata file. For instance, if we have a continuous covariate `age` and a binary covariate `male_sex`, then we add a list to the metadata with key `covariateFieldNames`
 
 ```python
 {
   "id" : "DurbanHIV1",
   ## other items as in example.json
   ## ...
-  "covariates" : ["age", "male_sex"] ## covariates included in the regression
+  "covariateFieldNames" : ["age", "male_sex"] ## covariates included in the regression
 }
 ```
 
